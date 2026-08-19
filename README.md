@@ -2,6 +2,30 @@
 
 `mixedFlowR` is a design-aware R workflow for mixed models in agronomy and related experimental sciences. It links classical experimental-error strata to modern hierarchical, distributional, robust, Bayesian, nonlinear, spatial, longitudinal and multi-environment analyses while retaining the scientific design and the backend model object.
 
+## Installation
+
+Install from GitHub (fast, without vignettes):
+
+```r
+# install.packages("pak")
+pak::pak("wep69/mixedFlowR")
+```
+
+Install from GitHub with vignettes (rebuilds the full tutorial; requires Quarto/pandoc):
+
+```r
+# install.packages("remotes")
+remotes::install_github("wep69/mixedFlowR", build_vignettes = TRUE)
+```
+
+Install the development version from source:
+
+```r
+# download the tarball from GitHub releases or build locally:
+# R CMD build mixedFlowR
+# R CMD INSTALL mixedFlowR_0.1.0.9000.tar.gz
+```
+
 ## Core workflow
 
 ```r
