@@ -16,6 +16,10 @@ docs/
 _freeze/
 inst/doc/
 
+# Vignette build products (HTML/R are generated, only .Rmd sources tracked)
+vignettes/*.html
+vignettes/*.R
+
 # Validation artifacts (kept outside the repository on purpose)
 logs/
 lib-isolada/
