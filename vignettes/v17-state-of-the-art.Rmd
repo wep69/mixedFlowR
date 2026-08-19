@@ -1,0 +1,383 @@
+---
+title: "State of the Art: mixedFlowR in the R Mixed-Model Ecosystem"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{State of the Art: mixedFlowR in the R Mixed-Model Ecosystem}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, error = FALSE,
+  collapse = TRUE, comment = "#>", fig.align = "center",
+  fig.width = 7, fig.height = 5, dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+`mixedFlowR` is not intended to replace the mature statistical engines on which it depends. Its role is to connect experimental design, model specification, diagnostics, inference, sensitivity analysis, specialized agronomic structures, and communication through a coherent interface.
+
+This vignette positions the package within the contemporary R mixed-model ecosystem and explains where specialized backends remain authoritative.
+
+> **Metadata snapshot.** Package versions in this vignette were checked against the official CRAN package pages on 2026-08-18. Package versions change; use `packageVersion()` to document the versions actually used in an analysis.
+
+# 1. Learning objectives
+
+You will learn to:
+
+- distinguish orchestration from estimation;
+- understand the primary role of each backend;
+- identify areas where backend semantics differ despite a common wrapper;
+- recognize the strengths and limitations of a unified API;
+- decide when direct backend use is more appropriate;
+- document package-version provenance.
+
+# 2. Current ecosystem snapshot
+
+The following versions were current on CRAN at the metadata snapshot used for this tutorial.
+
+| Package | Version | Primary role in this workflow |
+|---|---:|---|
+| `lme4` | 2.0-6 | core LMM/GLMM and nonlinear mixed-model infrastructure |
+| `nlme` | 3.1-170 | Gaussian LMM/NLMM with residual correlation and variance functions |
+| `glmmTMB` | 1.1.14 | flexible GLMMs, zero inflation, dispersion and structured covariance |
+| `robustlmm` | 3.5.0-2 | robust Gaussian LMM estimation |
+| `emmeans` | 2.0.4 | EMMs, contrasts, trends, slope comparisons |
+| `pbkrtest` | 0.5.5 | Kenward-Roger, Satterthwaite-related tools and parametric bootstrap testing |
+| `confintROB` | 1.1-1 | confidence intervals for classical/robust LMMs, including wild/parametric bootstrap |
+| `DHARMa` | 0.5.0 | simulation-based residual diagnostics |
+| `gamlss` | 5.5-0 | distributional regression for location, scale and shape |
+| `brms` | 2.23.0 | Bayesian generalized, nonlinear, multivariate and distributional multilevel models |
+| `SpATS` | 1.0-20 | 2-D P-spline spatial analysis of field trials |
+| `sommer` | 4.4.6 | complex mixed-model equations, quantitative genetics, MET/GxE covariance |
+
+The version table is descriptive provenance, not a claim that newer versions are always statistically superior. Version metadata were taken from the official CRAN package records for `lme4` [@lme4cran2026], `nlme` [@nlmecran2026], `glmmTMB` [@glmmtmbcran2026], `robustlmm` [@robustlmmcran2026], `emmeans` [@emmeanscran2026], `pbkrtest` [@pbkrtestcran2025], `confintROB` [@confintrobcran2026], `DHARMa` [@dharmacran2026], `gamlss` [@gamlsscran2025], `brms` [@brmscran2025], `SpATS` [@spatscran2026], and `sommer` [@sommercran2026].
+
+# 3. mixedFlowR's architectural role
+
+The package follows this architecture:
+
+```text
+experimental design
+        |
+        v
+mixedFlowR specification / audit
+        |
+        +---- lme4
+        +---- nlme
+        +---- glmmTMB
+        +---- robustlmm
+        +---- gamlss
+        +---- brms
+        +---- SpATS
+        +---- sommer
+        |
+        v
+diagnostics + inference + communication
+```
+
+The fitted backend object is preserved inside the `mixedflow_fit` wrapper. This matters because expert users can still access backend-specific methods when the unified interface is not sufficient.
+
+# 4. Core Gaussian and generalized mixed models: lme4
+
+`lme4` remains a central general-purpose engine for linear and generalized linear mixed models [@bates2015]. The current CRAN branch also documents covariance-structure functionality in addition to its long-standing random-effects grammar.
+
+`mixedFlowR` uses it for:
+
+```{r lme4-map}
+library(mixedFlowR)
+mixed_blocks("LMM|GLMM|random")
+```
+
+Representative functions include:
+
+```text
+mixed_fit()
+mixed_random_intercepts()
+mixed_random_slopes()
+mixed_nested()
+mixed_crossed()
+mixed_blup()
+mixed_glmm()
+```
+
+## When direct lme4 use is preferable
+
+Use the backend directly when you need:
+
+- optimizer controls not exposed by the wrapper;
+- low-level `getME()` components;
+- custom deviance functions;
+- specialized profiling;
+- new covariance syntax not yet wrapped by `mixedFlowR`.
+
+The wrapper should not hide advanced backend capabilities from expert users.
+
+# 5. Residual covariance and heteroscedasticity: nlme
+
+`nlme` remains especially important for Gaussian mixed models with explicit residual correlation and variance functions.
+
+`mixedFlowR` delegates:
+
+```text
+mixed_ar1(..., engine = "nlme")
+mixed_car1()
+mixed_heterogeneity()
+mixed_nonlinear(..., engine = "nlme")
+mixed_growth()
+mixed_dose_response()
+```
+
+The distinction between `nlme` residual covariance and structured random components in other engines is preserved in the tutorial documentation.
+
+# 6. Flexible GLMMs and structured covariance: glmmTMB
+
+`glmmTMB` uses Template Model Builder and supports a wide set of response families, zero-inflation components, dispersion submodels, and covariance structures [@brooks2017].
+
+`mixedFlowR` uses it for:
+
+```text
+mixed_count()
+mixed_beta()
+mixed_zero_inflated()
+mixed_toeplitz()
+mixed_spatiotemporal()
+mixed_spatial_covariance()
+```
+
+A key advantage is that conditional mean, zero-inflation, and dispersion components can be modeled separately. A key responsibility is to interpret those components separately.
+
+# 7. Robust LMMs: robustlmm
+
+`robustlmm` implements robust scoring-equation estimation for Gaussian mixed models [@koller2016]. The contemporary package includes dedicated developments in robust inference, diagnostics, and structured covariance.
+
+The `mixedFlowR` layer emphasizes **sensitivity analysis**, not automatic replacement of classical estimates.
+
+```text
+mixed_robust()
+mixed_compare_robust()
+mixed_robust_influence()
+mixed_contamination()
+```
+
+# 8. Marginal means and trends: emmeans
+
+`emmeans` supports estimated marginal means across a broad set of linear, generalized, mixed, and Bayesian model classes. It also provides contrasts, trends, and comparisons of slopes.
+
+`mixedFlowR` delegates:
+
+```text
+mixed_emmeans()
+mixed_contrasts()
+mixed_cld()
+mixed_trend()
+mixed_curve()
+mixed_optimum()
+```
+
+The wrapper deliberately separates qualitative treatment comparisons from quantitative-response questions.
+
+# 9. Small-sample and bootstrap inference: pbkrtest and confintROB
+
+`pbkrtest` supplies Kenward-Roger and parametric-bootstrap comparison tools for appropriate mixed models. `confintROB` provides confidence-interval methods for classical and robust LMM estimators, including parametric and wild bootstrap and percentile/BCa options.
+
+These tools solve inferential problems. They do not repair an incorrect design model.
+
+# 10. Simulation residuals: DHARMa
+
+`DHARMa` creates scaled simulation-based residuals for many hierarchical regression models and provides diagnostics for over/underdispersion, zero inflation, and residual spatial/temporal autocorrelation.
+
+`mixedFlowR` exposes this through:
+
+```{r dharma-map}
+mixed_blocks("diagnostic")
+```
+
+and `mixed_diagnose(..., simulate=TRUE)` for supported model objects.
+
+# 11. Distributional regression: gamlss
+
+GAMLSS models multiple parameters of the conditional response distribution [@rigby2005]. This is scientifically useful when treatment affects variability, skewness, or conditional quantiles as well as the mean.
+
+```text
+mixed_gamlss()
+mixed_gamlss_parameters()
+mixed_gamlss_select()
+mixed_gamlss_quantiles()
+mixed_gamlss_diagnose()
+```
+
+The package does not treat GAMLSS as merely a more complicated GLMM.
+
+# 12. Bayesian multilevel modeling: brms
+
+`brms` supports Bayesian generalized, nonlinear, multivariate, distributional, and other multilevel models using Stan [@burkner2017].
+
+The `mixedFlowR` Bayesian workflow includes:
+
+```text
+mixed_prior()
+mixed_prior_predictive()
+mixed_bayes()
+mixed_posterior()
+mixed_pp_check()
+mixed_loo()
+```
+
+This preserves the Bayesian sequence from prior model to posterior predictive assessment rather than reducing Bayesian analysis to a posterior coefficient table.
+
+# 13. Spatial field trials: SpATS
+
+`SpATS` models two-dimensional field trends with penalized splines [@rodriguez2018].
+
+```text
+mixed_spatial_field()
+mixed_spatial_surface()
+```
+
+This module is agronomy-specific and complements parametric spatial covariance from `glmmTMB`.
+
+# 14. MET, GxE, and covariance-rich breeding models: sommer
+
+`sommer` supports structural mixed models, heterogeneous/unstructured covariance, known relationship matrices, and spatial models [@covarrubias2016].
+
+`mixedFlowR` exposes a focused subset through:
+
+```text
+mixed_met()
+mixed_gxe()
+```
+
+Advanced quantitative-genetic structures can still be passed through backend-specific formulas and `...` when required.
+
+# 15. What mixedFlowR adds
+
+The package adds value mainly through **integration**.
+
+## 15.1 Design audit
+
+```text
+mixed_design_audit()
+mixed_hierarchy()
+mixed_balance()
+mixed_pseudorep()
+```
+
+## 15.2 Legacy-to-modern bridge
+
+```text
+fit_legacy_splitplot()
+splitplot_ems()
+splitplot_anova()
+compare_legacy_mixed()
+```
+
+## 15.3 Consistent result objects
+
+The backend model, stored data, engine label, and model specification are retained for later diagnostics and communication.
+
+## 15.4 Cross-module teaching
+
+`mixed_tour()` makes the conceptual progression visible.
+
+## 15.5 Unified publication layer
+
+`mixed_table()`, `mixed_plot()`, and `mixed_report()` create consistent outputs without altering underlying estimates.
+
+# 16. What mixedFlowR deliberately does not do
+
+It does not:
+
+- choose the "best" model automatically;
+- invent a distribution from the data;
+- decide fixed versus random status without a scientific target;
+- remove outliers automatically;
+- convert every quantitative factor into pairwise tests;
+- hide backend convergence failures;
+- make posterior and frequentist intervals equivalent;
+- replace specialist backend documentation.
+
+# 17. Important semantic differences across engines
+
+A unified function name can hide dangerous assumptions if the level of the model is not documented.
+
+Examples:
+
+- residual AR(1) in `nlme` is not identical to a structured random component in another engine;
+- `lme4` and `glmmTMB` use different computational machinery for some GLMMs;
+- `gamlss` and `brms` distributional regression have different inferential frameworks;
+- `SpATS` spatial smoothing is not the same model as a Matérn covariance;
+- robust scoring equations are not the same as cluster-robust standard errors.
+
+The vignettes preserve these distinctions even when the user-facing API is consistent.
+
+# 18. Optional dependency philosophy
+
+```{r capabilities}
+mixed_capabilities()
+```
+
+Heavy backends remain in `Suggests`. This makes the core package installable without Stan, `sommer`, `SpATS`, or every diagnostic package.
+
+A missing backend should result in an informative capability message, not an unexplained crash.
+
+# 19. State-of-the-art comparison table
+
+| Need | Primary backend | mixedFlowR role |
+|---|---|---|
+| standard LMM/GLMM | `lme4` | design-aware wrapper + diagnostics/inference |
+| residual correlation/variance functions | `nlme` | structured workflow |
+| flexible GLMM/ZI/dispersion | `glmmTMB` | family and covariance orchestration |
+| robust Gaussian LMM | `robustlmm` | sensitivity comparison |
+| EMMs/trends | `emmeans` | consistent qualitative/quantitative API |
+| KR/PB tests | `pbkrtest` | guarded comparison/inference |
+| bootstrap CI | `confintROB` / `lme4` | unified resampling interface |
+| simulated residuals | `DHARMa` | integrated diagnostic object |
+| distributional regression | `gamlss` | mixed GAMLSS workflow |
+| Bayesian multilevel | `brms` | prior-to-PPC workflow |
+| spatial field splines | `SpATS` | field-trial wrapper and surface plot |
+| MET/GxE | `sommer` | focused agronomic covariance API |
+
+# 20. Reproducibility consequence of a changing ecosystem
+
+Record exact package versions.
+
+```{r versions}
+core_pkgs <- c(
+  "mixedFlowR", "lme4", "nlme", "glmmTMB", "robustlmm",
+  "emmeans", "pbkrtest", "confintROB", "DHARMa", "gamlss",
+  "brms", "SpATS", "sommer"
+)
+
+available_versions <- lapply(core_pkgs, function(p) {
+  if (requireNamespace(p, quietly = TRUE)) as.character(utils::packageVersion(p)) else NA_character_
+})
+names(available_versions) <- core_pkgs
+available_versions
+```
+
+# 21. Key take-home messages
+
+- The statistical engines remain the source of estimation authority.
+- `mixedFlowR` adds design awareness, workflow coherence, safeguards, and communication.
+- A consistent API must not imply that different covariance or inferential frameworks are identical.
+- Direct backend use remains appropriate for advanced features not exposed by the wrapper.
+- Package versions are part of reproducibility and should be recorded.
+
+# 22. What comes next
+
+Continue with `18-validation-reproducibility.Rmd` to verify the package, datasets, examples, tests, and computational provenance.
+
+# References
+
+The core ecosystem includes `lme4` [@bates2015], `glmmTMB` [@brooks2017], `robustlmm` [@koller2016], GAMLSS [@rigby2005], `brms` [@burkner2017], `SpATS` [@rodriguez2018], and `sommer` [@covarrubias2016].

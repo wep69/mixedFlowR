@@ -1,0 +1,332 @@
+---
+title: "Multi-Environment Trials and Genotype-by-Environment Models"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{Multi-Environment Trials and Genotype-by-Environment Models}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, error = FALSE,
+  collapse = TRUE, comment = "#>", fig.align = "center",
+  fig.width = 7, fig.height = 5, dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+Multi-environment trials (METs) evaluate genotypes across environments, years, locations, or management conditions. The central statistical problem is not simply whether environments differ; it is how genotype performance changes across environments and how information should be borrowed across the resulting covariance structure.
+
+`mixedFlowR` delegates MET and GxE estimation to `sommer`, a mixed-model solver designed for complex covariance and quantitative-genetic applications [@covarrubias2016].
+
+# 1. Learning objectives
+
+You will learn to:
+
+- audit genotype-by-environment replication;
+- fit a baseline MET model;
+- distinguish environment fixed effects from genotype random effects;
+- fit diagonal, unstructured, and reduced-rank factor-analytic GxE covariance structures;
+- understand covariance borrowing across environments;
+- recognize overparameterization in unstructured GxE;
+- interpret reduced-rank GxE cautiously;
+- report MET results beyond a single overall genotype mean.
+
+# 2. Teaching dataset
+
+```{r data}
+library(mixedFlowR)
+m <- mixed_data("met")
+head(m)
+```
+
+Inspect replication.
+
+```{r support}
+with(m, table(environment, rep))
+with(m, table(environment, genotype))
+```
+
+Observed environment means:
+
+```{r environment-means}
+aggregate(yield ~ environment, m, mean)
+```
+
+Observed genotype means:
+
+```{r genotype-means}
+gm <- aggregate(yield ~ genotype, m, mean)
+gm[order(-gm$yield), ][1:8, ]
+```
+
+These raw means ignore GxE covariance and should not be treated as complete MET inference.
+
+# 3. Visualize genotype profiles
+
+```{r profile-plot, fig.height=5.5}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  prof <- aggregate(yield ~ genotype + environment, m, mean)
+
+  ggplot2::ggplot(
+    prof,
+    ggplot2::aes(environment, yield, group = genotype, colour = genotype)
+  ) +
+    ggplot2::geom_line(alpha = 0.55) +
+    ggplot2::geom_point(size = 1.5) +
+    ggplot2::labs(
+      x = "Environment",
+      y = "Mean yield",
+      colour = "Genotype",
+      title = "Observed genotype profiles across environments"
+    ) +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::theme(legend.position = "none")
+}
+```
+
+Crossing profiles are a descriptive sign of interaction but do not quantify the covariance structure.
+
+# 4. Baseline MET model
+
+Treat environment as fixed and genotype as random.
+
+```{r baseline-met}
+if (requireNamespace("sommer", quietly = TRUE)) {
+  met_fit <- mixed_met(
+    fixed  = yield ~ environment,
+    random = ~ genotype,
+    data   = m,
+    solver = "mmes"
+  )
+
+  met_fit
+}
+```
+
+The inferential target here is the environment mean structure plus a population-level genotype variance component.
+
+# 5. Alternative random environment baseline
+
+```{r random-env}
+if (requireNamespace("sommer", quietly = TRUE)) {
+  met_random_env <- mixed_met(
+    fixed  = yield ~ 1,
+    random = ~ genotype + environment,
+    data   = m
+  )
+}
+```
+
+Whether environment is fixed or random depends on the target population and sampling interpretation. Do not choose based only on coding convenience.
+
+# 6. Diagonal GxE covariance
+
+A diagonal structure allows environment-specific GxE variances but no GxE covariance across environments.
+
+```{r diagonal}
+if (requireNamespace("sommer", quietly = TRUE)) {
+  gxe_diag <- mixed_gxe(
+    data        = m,
+    response    = "yield",
+    genotype    = "genotype",
+    environment = "environment",
+    model       = "diagonal"
+  )
+
+  gxe_diag
+}
+```
+
+# 7. Unstructured GxE covariance
+
+```{r unstructured}
+if (requireNamespace("sommer", quietly = TRUE)) {
+  gxe_us <- mixed_gxe(
+    m,
+    response = "yield",
+    genotype = "genotype",
+    environment = "environment",
+    model = "unstructured"
+  )
+}
+```
+
+An unstructured covariance estimates many environment-specific variances and covariances. Parameter count grows quickly with the number of environments.
+
+# 8. Reduced-rank factor-analytic GxE
+
+```{r fa2}
+if (requireNamespace("sommer", quietly = TRUE)) {
+  gxe_fa2 <- mixed_gxe(
+    data        = m,
+    response    = "yield",
+    genotype    = "genotype",
+    environment = "environment",
+    model       = "fa",
+    nPC         = 2
+  )
+}
+```
+
+Reduced-rank models summarize major covariance dimensions and can be more parsimonious than a full unstructured matrix.
+
+# 9. One-factor reduced-rank sensitivity
+
+```{r fa1}
+if (requireNamespace("sommer", quietly = TRUE)) {
+  gxe_fa1 <- mixed_gxe(
+    m,
+    "yield",
+    "genotype",
+    "environment",
+    model = "fa",
+    nPC = 1
+  )
+}
+```
+
+Compare one and two retained factors through likelihood descriptors and, importantly, interpretability and convergence.
+
+# 10. What factor-analytic structure means
+
+A factor-analytic covariance represents GxE through a smaller set of latent covariance dimensions.
+
+Conceptually:
+
+- environments have loadings on latent factors;
+- genotypes have factor scores;
+- the product helps reconstruct covariance in performance;
+- residual environment-specific GxE variance can remain.
+
+Do not automatically interpret a latent factor as rainfall, temperature, or soil fertility unless external environmental covariates support that interpretation.
+
+# 11. Stability is multidimensional
+
+A genotype can have:
+
+- high overall mean and high interaction;
+- moderate mean and stable response;
+- specific adaptation to one environment class;
+- crossover interaction with other genotypes.
+
+A single stability score can hide these distinctions.
+
+# 12. Crossed random-effects baseline
+
+For teaching, a simpler `lme4` crossed model can illustrate genotype and environment heterogeneity.
+
+```{r crossed-baseline}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  crossed <- mixed_crossed(
+    data = m,
+    response = "yield",
+    fixed = "1",
+    groups = c("genotype", "environment")
+  )
+}
+```
+
+This is not a substitute for a full GxE covariance model because it lacks environment-specific genotype covariance structure.
+
+# 13. Compare covariance complexity conceptually
+
+| Structure | Strength | Limitation |
+|---|---|---|
+| diagonal | few covariance assumptions | no cross-environment covariance |
+| unstructured | maximally flexible covariance | many parameters, may be unstable |
+| FA / reduced rank | parsimonious covariance | latent factors require cautious interpretation |
+
+# 14. Missing cells and unbalanced METs
+
+Mixed models can accommodate incomplete genotype-by-environment tables under their likelihood assumptions, but information borrowing becomes uneven.
+
+Always inspect support.
+
+```{r support-audit}
+mixed_balance(m, c("environment", "rep", "genotype"))
+```
+
+Create a missing-cell teaching scenario.
+
+```{r missing-met}
+m_missing <- m[-1, ]
+mixed_balance(m_missing, c("environment", "rep", "genotype"))
+```
+
+# 15. Prediction and ranking caution
+
+BLUP-like genotype predictions are conditional on:
+
+- fitted covariance structure;
+- environment representation;
+- residual model;
+- genotype fixed/random assumption;
+- relationship matrices if supplied in more advanced `sommer` models.
+
+Do not report ranks without uncertainty or stability context.
+
+# 16. Extending to pedigree/genomic covariance
+
+The `mixed_met()` wrapper can pass advanced `sommer` random-effect structures through `...`. Such models should be documented carefully because known relationship matrices change the interpretation of genotype covariance.
+
+A generic template is shown but not evaluated:
+
+```{r genomic-template, eval=FALSE}
+# Define `genomic_random_formula` from a scientifically justified
+# sommer relationship structure before fitting.
+fit_genomic <- mixed_met(
+  fixed = yield ~ environment,
+  random = genomic_random_formula,
+  data = met_with_relationships,
+  solver = "mmes"
+)
+```
+
+# 17. Reporting checklist
+
+Report:
+
+- environments and their sampling interpretation;
+- replication within environments;
+- genotype fixed/random status;
+- residual covariance assumption;
+- GxE covariance structure;
+- number of factors in reduced-rank models;
+- convergence diagnostics;
+- genotype predictions and uncertainty;
+- evidence of crossover or specific adaptation;
+- environmental covariates used to interpret latent factors, if any.
+
+# 18. Exercises
+
+1. Fit diagonal and unstructured GxE models and compare parameter complexity.
+2. Fit FA1 and FA2 and explain what additional latent dimension is being allowed.
+3. Remove several genotype-environment cells and inspect support before refitting.
+4. Plot raw genotype profiles and identify examples of crossover interaction.
+
+# 19. Key take-home messages
+
+- MET analysis is primarily about genotype performance **across** environments, not environment means alone.
+- GxE covariance structure determines how information is borrowed across environments.
+- Unstructured covariance can become parameter-heavy quickly.
+- Factor-analytic factors are statistical dimensions until externally interpreted.
+- Ranking genotypes without uncertainty and interaction context is incomplete.
+
+# 20. Next vignette
+
+Continue with `15-publication-output.Rmd` for publication-ready figures, tables, exports, and report generation.
+
+# References
+
+The MET/GxE implementation is built on `sommer` and its mixed-model covariance framework [@covarrubias2016].

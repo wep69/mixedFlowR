@@ -1,0 +1,15 @@
+citHeader("To cite mixedFlowR in publications use:")
+
+bibentry(
+  bibtype  = "Manual",
+  title    = "mixedFlowR: Design-Aware Mixed Models for Agronomic Experiments",
+  author   = c(person(given = "Walter", family = "Esfrain Pereira"),
+               person(given = c("Magali", "Haidee"), family = "Pereira Martinez")),
+  year     = "2026",
+  note     = sprintf("R package version %s", meta$Version),
+  textVersion = paste0(
+    "Esfrain Pereira, W. and Pereira Martinez, M. H. (2026). ",
+    "mixedFlowR: Design-Aware Mixed Models for Agronomic Experiments. ",
+    "R package version ", meta$Version, "."
+  )
+)

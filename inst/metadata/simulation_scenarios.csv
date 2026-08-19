@@ -1,0 +1,13 @@
+scenario_id,module,dgp,n_rep,seed,primary_target,expected_check,status
+SIM01,legacy,"balanced split-plot Gaussian",500,26081801,"legacy vs mixed fixed estimands","agreement under equivalent balanced parameterization",defined_not_run
+SIM02,lmm,"random intercept Gaussian",1000,26081802,"fixed effects and variance components","bias and CI coverage",defined_not_run
+SIM03,random_slope,"correlated intercept/slope",1000,26081803,"slope covariance","parameter recovery and singularity rate",defined_not_run
+SIM04,robust,"5 percent contaminated clusters",1000,26081804,"classical vs robust estimates","bias/RMSE sensitivity without deletion",defined_not_run
+SIM05,bootstrap,"small-cluster Gaussian LMM",1000,26081805,"fixed and variance-component CI","coverage of Wald/parametric/wild/BCa routes",defined_not_run
+SIM06,glmm,"overdispersed negative-binomial counts",1000,26081806,"mean/dispersion","bias coverage convergence",defined_not_run
+SIM07,zero_inflation,"NB2 with structural zeros",1000,26081807,"conditional and zero-inflation effects","recovery calibration convergence",defined_not_run
+SIM08,covariance,"irregular continuous-time AR1",1000,26081808,"correlation parameter","CAR1 recovery versus misspecified discrete AR1",defined_not_run
+SIM09,gamlss,"location and scale both treatment-dependent",1000,26081809,"mu and sigma predictors","parameter recovery quantile calibration",defined_not_run
+SIM10,spatial,"2D smooth field trend plus genotype",500,26081810,"genotype adjusted values","spatial correction and predictive error",defined_not_run
+SIM11,gxe,"low-rank environment covariance",500,26081811,"GxE covariance","reduced-rank recovery and prediction",defined_not_run
+SIM12,qual_quant,"quadratic dose by qualitative treatment",1000,26081812,"curves trends optimum","curve coverage and optimum bias",defined_not_run

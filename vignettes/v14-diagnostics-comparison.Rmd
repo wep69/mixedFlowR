@@ -1,0 +1,382 @@
+---
+title: "Diagnostics and Model Comparison"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{Diagnostics and Model Comparison}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, error = FALSE,
+  collapse = TRUE, comment = "#>", fig.align = "center",
+  fig.width = 7, fig.height = 5, dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+Model comparison should follow model diagnosis, not replace it. This vignette develops a structured workflow for convergence, singularity, residual patterns, simulation diagnostics, influence, likelihood-based comparisons, small-sample tests, and parametric-bootstrap comparisons.
+
+# 1. Learning objectives
+
+You will learn to:
+
+- interpret convergence and singularity diagnostics;
+- inspect residual data before inference;
+- use `DHARMa` simulation diagnostics for supported GLMMs;
+- conduct grouped influence analysis;
+- compare candidate models using information criteria without automatic selection;
+- perform fixed-effect LRTs under ML;
+- use Kenward-Roger and parametric-bootstrap comparisons for suitable LMMs;
+- understand why a valid comparison depends on the estimand and fitting method.
+
+# 2. Diagnose a Gaussian LMM
+
+```{r data}
+library(mixedFlowR)
+z <- mixed_data("longitudinal")
+```
+
+```{r lmm}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  fit <- mixed_fit(
+    height ~ treatment * time + (time | subject),
+    data = z
+  )
+}
+```
+
+```{r diagnose}
+if (exists("fit")) {
+  diag <- mixed_diagnose(fit)
+  diag
+}
+```
+
+The diagnostic object contains convergence status, messages, singularity where supported, residual data, variance summaries, and optional simulation residuals.
+
+# 3. Residual plot
+
+```{r residual-plot}
+if (exists("fit")) {
+  mixed_plot(fit, type = "residuals")
+}
+```
+
+Look for:
+
+- nonlinear residual trend;
+- funnel-shaped variance;
+- clusters of extreme residuals;
+- unexplained grouping pattern;
+- serial or spatial dependence that requires a dedicated test or plot.
+
+# 4. Singularity
+
+A singular LMM has one or more random-effect dimensions estimated on or near a boundary. Common signs include a variance near zero or an extreme random-effect correlation.
+
+A singular fit can mean:
+
+- the data do not support the requested random structure;
+- the design provides too little repeated information;
+- a random slope is unnecessary;
+- predictors are poorly scaled or nearly redundant.
+
+It does **not** mean that the optimizer necessarily failed.
+
+# 5. Create a deliberately demanding random structure
+
+```{r demanding-fit}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  z_sparse <- subset(z, time %in% c(0, 1, 5))
+  demanding <- mixed_random_slopes(
+    z_sparse,
+    response = "height",
+    fixed = "treatment * time",
+    slope = "time",
+    group = "subject",
+    correlated = TRUE
+  )
+  mixed_diagnose(demanding)
+}
+```
+
+This example is designed to encourage diagnosis, not to guarantee a singular fit on every backend version.
+
+# 6. Simulation diagnostics for a count GLMM
+
+```{r count-model}
+cnt <- mixed_data("counts")
+
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  nb <- mixed_count(
+    count ~ treatment * time + (1 | plot),
+    data = cnt,
+    family = "nbinom2"
+  )
+}
+```
+
+```{r count-dharma}
+if (
+  exists("nb") &&
+  requireNamespace("DHARMa", quietly = TRUE)
+) {
+  nb_diag <- mixed_diagnose(nb, simulate = TRUE, nsim = 500)
+  nb_diag$simulation
+}
+```
+
+Simulation residuals are particularly helpful for detecting overdispersion, zero inflation, and nonuniform residual distributions in discrete models.
+
+# 7. Influence by cluster
+
+For `lme4` models, grouped deletion diagnostics can be requested through `influence.ME`.
+
+```{r influence}
+if (
+  exists("fit") &&
+  requireNamespace("influence.ME", quietly = TRUE)
+) {
+  infl <- mixed_influence(
+    fit,
+    group = "subject"
+  )
+
+  infl
+}
+```
+
+Influence means that removing a unit changes an estimate or inferential quantity materially. It is not the same as proving a data error.
+
+# 8. Information criteria as descriptors
+
+Fit two models under ML because their fixed-effect structures differ.
+
+```{r ml-models}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  m0_ml <- mixed_fit(
+    height ~ time + (1 | subject),
+    data = z,
+    REML = FALSE
+  )
+
+  m1_ml <- mixed_fit(
+    height ~ treatment + time + (1 | subject),
+    data = z,
+    REML = FALSE
+  )
+}
+```
+
+```{r information}
+if (exists("m0_ml") && exists("m1_ml")) {
+  mixed_compare(
+    no_treatment = m0_ml,
+    treatment    = m1_ml,
+    method       = "information"
+  )
+}
+```
+
+AIC and BIC provide penalized likelihood descriptors. They do not know the experimental design or biological importance.
+
+# 9. Likelihood-ratio test under ML
+
+```{r lrt}
+if (exists("m0_ml") && exists("m1_ml")) {
+  mixed_compare(
+    m0_ml,
+    m1_ml,
+    method = "LRT"
+  )
+}
+```
+
+When fixed effects differ, the package blocks this LRT if an `lmer` model is still fitted by REML.
+
+# 10. Deliberate invalid comparison
+
+```{r invalid-reml-lrt, eval=FALSE}
+m0_reml <- mixed_fit(height ~ time + (1 | subject), z, REML = TRUE)
+m1_reml <- mixed_fit(height ~ treatment + time + (1 | subject), z, REML = TRUE)
+mixed_compare(m0_reml, m1_reml, method = "LRT")
+```
+
+This chunk is deliberately not evaluated because it is intended to show a safeguarded error.
+
+# 11. Kenward-Roger comparison
+
+Fit two nested LMMs under the conventional REML setting.
+
+```{r kr-models}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  kr_small <- mixed_fit(
+    height ~ time + (1 | subject),
+    data = z
+  )
+
+  kr_large <- mixed_fit(
+    height ~ treatment + time + (1 | subject),
+    data = z
+  )
+}
+```
+
+```{r kr}
+if (
+  exists("kr_small") && exists("kr_large") &&
+  requireNamespace("pbkrtest", quietly = TRUE)
+) {
+  mixed_compare(
+    kr_small,
+    kr_large,
+    method = "Kenward-Roger"
+  )
+}
+```
+
+Kenward-Roger adjusts the small-sample reference distribution and covariance estimation for fixed-effect testing in appropriate Gaussian LMM settings.
+
+# 12. Parametric-bootstrap comparison
+
+Use a small simulation count for vignette execution.
+
+```{r pb-demo}
+if (
+  exists("kr_small") && exists("kr_large") &&
+  requireNamespace("pbkrtest", quietly = TRUE)
+) {
+  pb_demo <- mixed_compare(
+    kr_small,
+    kr_large,
+    method = "parametric-bootstrap",
+    nsim = 99,
+    seed = 260818
+  )
+
+  pb_demo
+}
+```
+
+Production-scale example:
+
+```{r pb-production, eval=FALSE}
+pb_full <- mixed_compare(
+  kr_small,
+  kr_large,
+  method = "parametric-bootstrap",
+  nsim = 4999,
+  seed = 260818
+)
+```
+
+The production chunk is not evaluated during vignette build because thousands of refits are intentionally expensive.
+
+# 13. Compare covariance candidates separately
+
+```{r covariance-models}
+if (requireNamespace("nlme", quietly = TRUE)) {
+  ar1 <- mixed_ar1(z, "height", "treatment*time", "time", "subject")
+  car1 <- mixed_car1(z, "height", "treatment*time", "time", "subject")
+}
+```
+
+```{r covariance-compare}
+if (exists("ar1") && exists("car1")) {
+  mixed_covariance_compare(
+    AR1 = ar1,
+    CAR1 = car1
+  )
+}
+```
+
+The fixed mean model should be kept comparable while evaluating covariance structure.
+
+# 14. A model-comparison decision tree
+
+Use the following logic.
+
+**Question A: Are fixed effects different?**
+
+- For `lmer` likelihood-ratio comparison, fit under ML.
+- For small-sample Gaussian LMM inference, consider Kenward-Roger or parametric bootstrap when appropriate.
+
+**Question B: Are random or covariance structures different?**
+
+- Keep the scientific fixed-effect estimand comparable.
+- Use likelihood descriptors and diagnostics.
+- Prefer structures supported by the design and repeated-measure geometry.
+
+**Question C: Are model families different?**
+
+- Diagnose distributional adequacy.
+- Compare predictive implications and biological process assumptions.
+- Do not rely on a single criterion.
+
+# 15. Diagnostic table output
+
+```{r diagnostics-table}
+if (exists("diag")) {
+  mixed_table(
+    diag,
+    component = "diagnostics",
+    format = "markdown",
+    caption = "Mixed-model diagnostic summary"
+  )
+}
+```
+
+# 16. What not to do
+
+Avoid workflows such as:
+
+1. generate ten random structures;
+2. rank by AIC;
+3. keep the minimum;
+4. ignore convergence warnings;
+5. report only the final p-values.
+
+This process disconnects modeling from experimental design and understates selection uncertainty.
+
+# 17. Practice exercises
+
+1. Fit random-intercept and random-slope models with the same fixed effects. Compare their diagnostics before AIC.
+2. Fit Poisson and negative-binomial count models. Ask whether the more flexible distribution solves a residual problem.
+3. Compare AR(1) and heterogeneous AR(1) models. State the additional scientific assumption introduced by heterogeneous residual variances.
+4. Refit a fixed-effect comparison under REML and verify that the guarded LRT refuses the invalid comparison.
+
+# 18. Reporting checklist
+
+For every model comparison, report:
+
+- models being compared;
+- what differs between them;
+- fitting method;
+- comparison method;
+- diagnostic status;
+- rationale for the preferred representation;
+- whether substantive conclusions are stable.
+
+# 19. Key take-home messages
+
+- Diagnostics precede model ranking.
+- Convergence and singularity are different concepts.
+- Information criteria are descriptors, not scientific decision rules.
+- Fixed-effect LRTs with `lmer` require appropriate ML fitting when the fixed structure changes.
+- Influence identifies sensitivity, not automatically erroneous observations.
+- Small-sample methods answer specific inferential questions and do not replace design reasoning.
+
+# 20. Next vignette
+
+Continue with `06-robust-sensitivity.Rmd` for robust estimation, contamination screens, and cluster-robust covariance.

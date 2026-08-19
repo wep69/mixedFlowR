@@ -1,0 +1,387 @@
+---
+title: "Nonlinear Mixed Models and Random Regression"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{Nonlinear Mixed Models and Random Regression}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, error = FALSE,
+  collapse = TRUE, comment = "#>", fig.align = "center",
+  fig.width = 7, fig.height = 5, dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+Many agronomic processes are intrinsically nonlinear: plant growth, germination, decomposition, nutrient uptake, dose response, and saturation. A polynomial can approximate curvature, but a mechanistic or phenomenological nonlinear function often yields parameters with clearer biological meaning.
+
+This vignette develops logistic and Gompertz growth models, a four-parameter dose-response model, a generic nonlinear mixed-model interface, and polynomial random regression curves.
+
+# 1. Learning objectives
+
+You will learn to:
+
+- recognize when a nonlinear function is preferable to a high-order polynomial;
+- fit logistic and Gompertz growth mixed models;
+- interpret asymptote and timing parameters;
+- fit a four-parameter logistic dose-response mixed model;
+- provide pooled starting values;
+- use the generic `mixed_nonlinear()` interface;
+- fit random regression curves;
+- distinguish nonlinear fixed structure from random trajectory heterogeneity.
+
+# 2. Growth teaching data
+
+```{r growth-data}
+library(mixedFlowR)
+g <- mixed_data("growth")
+head(g)
+```
+
+Plot observed trajectories.
+
+```{r growth-plot}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  ggplot2::ggplot(g, ggplot2::aes(time, biomass, group = plant, colour = treatment)) +
+    ggplot2::geom_line(alpha = 0.25) +
+    ggplot2::geom_point(alpha = 0.45, size = 1) +
+    ggplot2::stat_summary(
+      ggplot2::aes(group = treatment),
+      fun = mean,
+      geom = "line",
+      linewidth = 1.1
+    ) +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::labs(x = "Time", y = "Biomass", colour = "Treatment")
+}
+```
+
+The S-shaped trajectory motivates logistic or Gompertz growth functions.
+
+# 3. Logistic growth mixed model
+
+```{r logistic}
+if (requireNamespace("nlme", quietly = TRUE)) {
+  logis_fit <- mixed_growth(
+    data     = g,
+    response = "biomass",
+    time     = "time",
+    group    = "plant",
+    model    = "logistic"
+  )
+
+  logis_fit
+}
+```
+
+The implementation uses the self-starting logistic form with parameters `Asym`, `xmid`, and `scal`, with a random effect on `Asym` in the current wrapper.
+
+# 4. Biological interpretation of logistic parameters
+
+- `Asym`: asymptotic response level;
+- `xmid`: time associated with the curve midpoint;
+- `scal`: controls transition steepness/time scale.
+
+Because these are nonlinear parameters, their meaning is usually more interpretable than coefficients of a fourth-order polynomial.
+
+# 5. Gompertz growth mixed model
+
+```{r gompertz}
+if (requireNamespace("nlme", quietly = TRUE)) {
+  gomp_fit <- mixed_growth(
+    data     = g,
+    response = "biomass",
+    time     = "time",
+    group    = "plant",
+    model    = "gompertz"
+  )
+
+  gomp_fit
+}
+```
+
+Logistic and Gompertz curves differ in symmetry around the inflection region. Choose based on biological plausibility and model adequacy, not only fit score.
+
+# 6. Compare growth candidates
+
+```{r growth-compare}
+if (exists("logis_fit") && exists("gomp_fit")) {
+  mixed_compare(
+    Logistic = logis_fit,
+    Gompertz = gomp_fit,
+    method = "information"
+  )
+}
+```
+
+Inspect residuals and parameter plausibility before declaring a preferred curve.
+
+# 7. Growth diagnostics
+
+```{r growth-diagnose}
+if (exists("logis_fit")) {
+  mixed_diagnose(logis_fit)
+  mixed_plot(logis_fit, type = "residuals")
+}
+```
+
+Nonlinear convergence can depend on starting values and parameter scaling. A converged model can still be biologically implausible.
+
+# 8. Generic nonlinear mixed model with nlme
+
+Obtain pooled starting values.
+
+```{r initial}
+if (requireNamespace("nlme", quietly = TRUE)) {
+  st <- stats::getInitial(
+    biomass ~ SSlogis(time, Asym, xmid, scal),
+    data = g
+  )
+  st
+}
+```
+
+Use the generic wrapper.
+
+```{r generic-nlme}
+if (requireNamespace("nlme", quietly = TRUE)) {
+  generic_logis <- mixed_nonlinear(
+    biomass ~ SSlogis(time, Asym, xmid, scal),
+    data   = g,
+    engine = "nlme",
+    fixed  = Asym + xmid + scal ~ 1,
+    random = Asym ~ 1,
+    groups = ~ plant,
+    start  = st
+  )
+}
+```
+
+This interface is appropriate when the predefined growth/dose wrappers are too restrictive.
+
+# 9. Generic nonlinear mixed model with lme4
+
+```{r generic-lme4}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  st_lme4 <- stats::getInitial(
+    biomass ~ SSlogis(time, Asym, xmid, scal),
+    data = g
+  )
+
+  lme4_nl <- mixed_nonlinear(
+    biomass ~ SSlogis(time, Asym, xmid, scal) ~ (Asym | plant),
+    data   = g,
+    engine = "lme4",
+    start  = st_lme4
+  )
+}
+```
+
+Backend formula conventions differ; the orchestration layer does not erase those statistical and syntactic differences.
+
+# 10. Dose-response teaching data
+
+```{r dose-data}
+dd <- mixed_data("dose_response")
+head(dd)
+```
+
+Observed means:
+
+```{r dose-summary}
+aggregate(response ~ dose, dd, mean)
+```
+
+```{r dose-plot}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  ggplot2::ggplot(dd, ggplot2::aes(dose, response, group = unit)) +
+    ggplot2::geom_line(alpha = 0.12) +
+    ggplot2::geom_point(alpha = 0.25) +
+    ggplot2::stat_summary(fun = mean, geom = "line", linewidth = 1.1, colour = "black") +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::labs(x = "Dose", y = "Response")
+}
+```
+
+# 11. Four-parameter dose-response mixed model
+
+```{r dose-fit}
+if (requireNamespace("nlme", quietly = TRUE)) {
+  dose_fit <- mixed_dose_response(
+    data     = dd,
+    response = "response",
+    dose     = "dose",
+    group    = "unit"
+  )
+
+  dose_fit
+}
+```
+
+The current wrapper uses `SSfpl` with a random effect on parameter `A`.
+
+# 12. User-supplied starts
+
+```{r dose-start}
+if (requireNamespace("nlme", quietly = TRUE)) {
+  dose_start <- stats::getInitial(
+    response ~ SSfpl(dose, A, B, xmid, scal),
+    data = dd
+  )
+
+  dose_fit_start <- mixed_dose_response(
+    dd,
+    response = "response",
+    dose = "dose",
+    group = "unit",
+    start = dose_start
+  )
+}
+```
+
+Starting values should be plausible and reproducible. If a nonlinear fit converges only from highly specific starts, investigate parameter identifiability.
+
+# 13. Dose-response interpretation
+
+Potential targets include:
+
+- lower and upper asymptotes;
+- midpoint dose;
+- transition scale/steepness;
+- predicted effective doses derived from the curve;
+- between-unit variation in curve parameters.
+
+Do not extrapolate a toxicity or optimum claim beyond the experimental dose range without external biological support.
+
+# 14. Random regression curves
+
+Random regression approximates trajectories with polynomials and allows coefficients to vary among units.
+
+```{r random-regression-linear}
+z <- mixed_data("longitudinal")
+
+if (requireNamespace("lme4", quietly = TRUE)) {
+  rr1 <- mixed_random_curve(
+    response = "height",
+    time     = "time",
+    data     = z,
+    group    = "subject",
+    degree   = 1,
+    fixed    = "treatment"
+  )
+}
+```
+
+Quadratic random regression:
+
+```{r random-regression-quadratic}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  rr2 <- mixed_random_curve(
+    response = "height",
+    time     = "time",
+    data     = z,
+    group    = "subject",
+    degree   = 2,
+    fixed    = "treatment"
+  )
+}
+```
+
+# 15. Compare random regression degrees
+
+```{r rr-compare}
+if (exists("rr1") && exists("rr2")) {
+  mixed_compare(
+    linear    = rr1,
+    quadratic = rr2,
+    method = "information"
+  )
+}
+```
+
+A higher polynomial degree increases random-effect dimensionality rapidly. Diagnose singularity and covariance estimation carefully.
+
+# 16. Nonlinear mixed model versus random regression
+
+**Nonlinear mixed model**
+
+- imposes a named biological/phenomenological curve;
+- parameters often have direct meaning;
+- can be sensitive to starts and identifiability.
+
+**Random regression**
+
+- approximates trajectories flexibly with polynomial basis functions;
+- useful for heterogeneous longitudinal trajectories;
+- parameters themselves may be less biologically intuitive.
+
+# 17. Bayesian nonlinear template
+
+`mixed_nonlinear()` can delegate a nonlinear `brms` formula to `brms`.
+
+```{r bayes-nonlinear, eval=FALSE}
+bf_growth <- brms::bf(
+  biomass ~ Asym / (1 + exp((xmid - time) / scal)),
+  Asym ~ 1 + (1 | plant),
+  xmid ~ 1,
+  scal ~ 1,
+  nl = TRUE
+)
+
+bayes_growth <- mixed_nonlinear(
+  bf_growth,
+  data = g,
+  engine = "brms",
+  prior = nonlinear_priors,  # define priors on biologically interpretable parameters first
+  chains = 4,
+  iter = 4000,
+  seed = 260818
+)
+```
+
+Priors on nonlinear parameters need especially careful scale interpretation.
+
+# 18. Reporting nonlinear models
+
+Report:
+
+- curve equation or named self-start function;
+- fixed parameter structure;
+- random parameter structure;
+- starting-value method;
+- convergence diagnostics;
+- parameter estimates with uncertainty;
+- derived quantities such as asymptote or midpoint;
+- observed data with fitted curves;
+- experimental range and extrapolation limits.
+
+# 19. Exercises
+
+1. Compare logistic and Gompertz fits visually and numerically.
+2. Fit a logistic model to one treatment subset and compare parameter interpretation with the pooled model.
+3. Fit degree-1 and degree-2 random regression curves and inspect singularity.
+4. Explain why a high-order polynomial optimum can be less biologically meaningful than a dose-response parameter.
+
+# 20. Key take-home messages
+
+- Nonlinear functions can provide biologically meaningful parameters.
+- Starting values and parameter identifiability matter.
+- A lower AIC does not make a biologically implausible curve acceptable.
+- Random regression and nonlinear mixed models solve related but distinct trajectory problems.
+- Avoid extrapolation beyond experimental support.
+
+# 21. What comes next
+
+Stage 4 begins with `12-spatial-field-trials.Rmd`, followed by multi-environment trials, publication outputs, and teaching tours.

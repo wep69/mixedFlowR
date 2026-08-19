@@ -1,0 +1,330 @@
+---
+title: "Spatial Mixed Models for Field Trials"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{Spatial Mixed Models for Field Trials}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, error = FALSE,
+  collapse = TRUE, comment = "#>", fig.align = "center",
+  fig.width = 7, fig.height = 5, dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+Agronomic field trials are rarely spatially homogeneous. Soil depth, fertility, moisture, slope, compaction, previous management, and microrelief can create trends across rows and columns. If treatment allocation is superimposed on these gradients, ignoring spatial structure can reduce precision or confound treatment interpretation.
+
+`mixedFlowR` provides two complementary spatial routes:
+
+1. parametric spatial covariance through `glmmTMB`;
+2. two-dimensional P-spline field correction through `SpATS` [@rodriguez2018].
+
+# 1. Learning objectives
+
+You will learn to:
+
+- map raw field observations before modeling;
+- distinguish block effects from continuous spatial trend;
+- fit exponential, Gaussian, and Matérn spatial covariance structures;
+- fit a two-dimensional P-spline field model with `SpATS`;
+- extract and visualize the spatial surface;
+- compare raw and spatially adjusted interpretations;
+- recognize spatial-treatment confounding;
+- report spatial models transparently.
+
+# 2. Spatial teaching data
+
+```{r data}
+library(mixedFlowR)
+s <- mixed_data("spatial")
+head(s)
+```
+
+Inspect dimensions and support.
+
+```{r dimensions}
+range(s$row)
+range(s$col)
+length(unique(s$genotype))
+with(s, table(block))
+```
+
+# 3. Raw field map
+
+```{r raw-map, fig.height=5.5}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  ggplot2::ggplot(s, ggplot2::aes(col, row, fill = yield)) +
+    ggplot2::geom_tile() +
+    ggplot2::scale_fill_viridis_c() +
+    ggplot2::coord_equal() +
+    ggplot2::scale_y_reverse() +
+    ggplot2::labs(
+      x = "Field column",
+      y = "Field row",
+      fill = "Yield",
+      title = "Observed field response"
+    ) +
+    ggplot2::theme_minimal(base_size = 11)
+}
+```
+
+**How to read the figure.** Look for broad gradients, patches, row/column bands, local extremes, and whether treatment layout might align with the gradient. This map is descriptive and mixes treatment signal with spatial variation.
+
+# 4. Raw genotype means are not spatially adjusted
+
+```{r raw-genotype}
+raw_gen <- aggregate(yield ~ genotype, s, mean)
+raw_gen[order(-raw_gen$yield), ][1:8, ]
+```
+
+These means are useful for reconnaissance, not final genotype ranking if spatial trend is important.
+
+# 5. Parametric spatial covariance
+
+Fit an exponential covariance structure.
+
+```{r spatial-exp}
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  m_exp <- mixed_spatial_covariance(
+    data      = s,
+    response  = "yield",
+    fixed     = "genotype + block",
+    x         = "col",
+    y         = "row",
+    structure = "exp"
+  )
+
+  m_exp
+}
+```
+
+Gaussian covariance:
+
+```{r spatial-gau}
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  m_gau <- mixed_spatial_covariance(
+    s, "yield", "genotype + block", "col", "row",
+    structure = "gau"
+  )
+}
+```
+
+Matérn covariance:
+
+```{r spatial-mat}
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  m_mat <- mixed_spatial_covariance(
+    s, "yield", "genotype + block", "col", "row",
+    structure = "mat"
+  )
+}
+```
+
+# 6. Compare parametric spatial candidates
+
+```{r spatial-compare}
+if (exists("m_exp") && exists("m_gau") && exists("m_mat")) {
+  mixed_covariance_compare(
+    Exponential = m_exp,
+    Gaussian    = m_gau,
+    Matern      = m_mat
+  )
+}
+```
+
+Do not choose a covariance solely because it has the smallest AIC. Consider estimated range/smoothness, residual spatial structure, convergence, and field-scale plausibility.
+
+# 7. Diagnose the parametric model
+
+```{r exp-diagnose}
+if (exists("m_exp")) {
+  mixed_diagnose(m_exp)
+  mixed_plot(m_exp, type = "residuals")
+}
+```
+
+If spatial dependence remains after the model, the covariance structure may be inadequate or the mean model may be missing field structure.
+
+# 8. Two-dimensional P-spline field model with SpATS
+
+```{r spats-fit}
+if (requireNamespace("SpATS", quietly = TRUE)) {
+  spats_fit <- mixed_spatial_field(
+    data     = s,
+    response = "yield",
+    genotype = "genotype",
+    col      = "col",
+    row      = "row",
+    random   = ~ block,
+    nseg     = c(6, 6)
+  )
+
+  spats_fit
+}
+```
+
+The spatial surface is modeled with a two-dimensional penalized spline rather than a single parametric correlation-decay function.
+
+# 9. Extract the fitted spatial trend
+
+```{r spatial-surface, fig.height=5.5}
+if (exists("spats_fit")) {
+  surface <- mixed_spatial_surface(
+    spats_fit,
+    grid = c(50, 50)
+  )
+
+  surface$plot
+}
+```
+
+**How to read the figure.** The heat map represents the estimated spatial trend, not genotype performance. A field trend can reveal gradual fertility or moisture structure and local patches.
+
+# 10. Publication wrapper for the same surface
+
+```{r spatial-wrapper, fig.height=5.5}
+if (exists("spats_fit")) {
+  mixed_plot(
+    spats_fit,
+    type = "spatial"
+  )
+}
+```
+
+# 11. Genotype as random
+
+In breeding contexts, the target can be prediction of genotype effects rather than fixed comparisons.
+
+```{r spats-random-genotype}
+if (requireNamespace("SpATS", quietly = TRUE)) {
+  spats_random <- mixed_spatial_field(
+    s,
+    response = "yield",
+    genotype = "genotype",
+    col = "col",
+    row = "row",
+    random = ~ block,
+    genotype_as_random = TRUE,
+    nseg = c(6, 6)
+  )
+}
+```
+
+Whether genotype should be fixed or random depends on the target population and inferential objective.
+
+# 12. Sensitivity to spatial basis resolution
+
+```{r spats-finer}
+if (requireNamespace("SpATS", quietly = TRUE)) {
+  spats_fine <- mixed_spatial_field(
+    s,
+    "yield",
+    "genotype",
+    "col",
+    "row",
+    random = ~ block,
+    nseg = c(8, 10)
+  )
+}
+```
+
+The number of spline segments controls basis resolution, while smoothing penalties control effective smoothness. A finer basis is not automatically a more complex effective surface, but it can increase computational burden.
+
+# 13. Spatial-treatment confounding
+
+A spatial smoother can be dangerous if treatment layout and field trend are nearly confounded.
+
+Ask:
+
+- Are treatments randomized throughout the field?
+- Do particular genotypes occupy one region?
+- Is block layout aligned with the main gradient?
+- Does spatial correction erase a treatment pattern because the design cannot distinguish them?
+
+No statistical method can fully recover treatment effects that were not separated from spatial position by design.
+
+# 14. Block effects and spatial trend can coexist
+
+Blocking accounts for designed large-scale heterogeneity. Spatial trend models residual field variation within and across blocks.
+
+Do not drop blocks merely because a smooth spatial surface is fitted. Keep design terms that represent the actual randomization unless there is a clearly justified alternative model.
+
+# 15. Field-trial analysis workflow
+
+1. inspect field layout and treatment map;
+2. plot raw response by row/column;
+3. audit blocks and treatment replication;
+4. fit a design-respecting nonspatial baseline;
+5. inspect residual spatial pattern;
+6. fit a plausible spatial covariance or surface;
+7. diagnose convergence and residual pattern;
+8. compare treatment/genotype estimates before and after correction;
+9. communicate both the field surface and adjusted treatment inference.
+
+# 16. Export a spatial figure
+
+```{r export-spatial, eval=FALSE}
+if (exists("spats_fit")) {
+  mixed_plot(
+    spats_fit,
+    type   = "spatial",
+    file   = "field_spatial_trend.tiff",
+    width  = 7,
+    height = 5.5,
+    dpi    = 600
+  )
+}
+```
+
+Writing files is disabled during vignette build but shown as the recommended publication workflow.
+
+# 17. Reporting checklist
+
+Report:
+
+- row and column coordinate system;
+- field dimensions;
+- blocking and treatment randomization;
+- spatial model family or spline structure;
+- engine;
+- genotype fixed/random status;
+- covariance or smoothing parameters where relevant;
+- residual spatial diagnostics;
+- sensitivity to reasonable spatial structures;
+- adjusted treatment/genotype estimates.
+
+# 18. Exercises
+
+1. Compare exponential and Gaussian covariance structures.
+2. Change the P-spline `nseg` values and inspect the fitted spatial trend.
+3. Fit genotype as fixed and random, and explain how the inferential target changes.
+4. Plot the treatment allocation itself across the field and discuss potential confounding.
+
+# 19. Key take-home messages
+
+- Map the field before fitting a spatial model.
+- Spatial correction should represent unexplained field variation, not absorb treatment layout.
+- Blocks and spatial trends serve different roles.
+- Parametric covariance and P-spline smoothing are alternative modeling strategies, not identical models.
+- Show the spatial surface and adjusted treatment/genotype results separately.
+
+# 20. Next vignette
+
+Continue with `13-met-gxe.Rmd` for multi-environment trials and genotype-by-environment covariance.
+
+# References
+
+The P-spline field-trial approach follows the methodology developed for `SpATS` [@rodriguez2018].

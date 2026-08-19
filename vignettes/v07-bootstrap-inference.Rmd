@@ -1,0 +1,406 @@
+---
+title: "Bootstrap Inference for Mixed Models"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{Bootstrap Inference for Mixed Models}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, error = FALSE,
+  collapse = TRUE, comment = "#>", fig.align = "center",
+  fig.width = 7, fig.height = 5, dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+Mixed-model uncertainty is not always well summarized by a symmetric Wald interval. Variance components are constrained, random-effect structures can be close to boundaries, and small-sample fixed-effect tests can have nonstandard behavior.
+
+This vignette introduces parametric bootstrap inference, variance-component bootstrap, prediction intervals, BCa/wild options where supported, and parametric-bootstrap model comparison.
+
+# 1. Learning objectives
+
+You will learn to:
+
+- distinguish a bootstrap distribution from the original sampling model;
+- obtain bootstrap intervals for fixed effects;
+- bootstrap variance components;
+- obtain bootstrap prediction intervals;
+- understand population versus conditional predictions;
+- use BCa or wild bootstrap when `confintROB` supports the fitted object;
+- choose a practical number of replicates for teaching versus scientific analysis;
+- report seeds, replication counts, interval type, and resampling method.
+
+# 2. Baseline model
+
+```{r data}
+library(mixedFlowR)
+z <- mixed_data("longitudinal")
+```
+
+```{r model}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  fit <- mixed_fit(
+    height ~ treatment * time + (1 | subject),
+    data = z
+  )
+}
+```
+
+# 3. Why bootstrap?
+
+A model-based bootstrap asks what estimates would be obtained if new datasets were generated repeatedly under the fitted model and the analysis were repeated.
+
+The workflow is:
+
+1. fit the model;
+2. simulate a new response under the fitted model;
+3. refit the model;
+4. recompute the statistic;
+5. repeat many times;
+6. summarize the empirical distribution.
+
+This procedure makes the computational burden explicit: 4,999 bootstrap replicates can mean roughly 4,999 model refits.
+
+# 4. Teaching-scale fixed-effect bootstrap
+
+Use a deliberately small number of replications for vignette execution.
+
+```{r bootstrap-demo}
+if (exists("fit")) {
+  boot_demo <- mixed_boot_fixed(
+    fit,
+    B = 49,
+    level = 0.95,
+    seed = 260818
+  )
+
+  boot_demo
+}
+```
+
+The small `B` is suitable for learning the API, not for final scientific inference.
+
+# 5. Production-scale fixed-effect bootstrap
+
+```{r bootstrap-production, eval=FALSE}
+boot_fixed <- mixed_boot_fixed(
+  fit,
+  B = 4999,
+  level = 0.95,
+  seed = 260818
+)
+```
+
+Why 4,999 rather than a universal magic number? Because Monte Carlo precision depends on the tail probability being estimated, computational budget, and the stability required for the scientific conclusion. Report the selected `B` explicitly.
+
+# 6. Bootstrap interval table
+
+```{r boot-table}
+if (exists("boot_demo")) {
+  mixed_table(
+    boot_demo,
+    component = "bootstrap",
+    format = "markdown",
+    caption = "Teaching-scale parametric bootstrap intervals"
+  )
+}
+```
+
+**How to read the table.** Compare the original coefficient estimate with the empirical bootstrap interval. Look especially for asymmetry or unexpectedly wide uncertainty.
+
+# 7. Visualize the bootstrap distribution
+
+```{r boot-plot}
+if (exists("boot_demo")) {
+  mixed_plot(
+    boot_demo,
+    type = "bootstrap"
+  )
+}
+```
+
+The distribution shown here is the empirical distribution of the requested bootstrap statistic across refitted simulated datasets.
+
+# 8. Variance-component bootstrap
+
+Variance components are nonnegative and often have skewed uncertainty.
+
+```{r variance-demo}
+if (exists("fit")) {
+  boot_var_demo <- mixed_boot_variance(
+    fit,
+    B = 49,
+    seed = 260818
+  )
+
+  boot_var_demo
+}
+```
+
+Production example:
+
+```{r variance-production, eval=FALSE}
+boot_var <- mixed_boot_variance(
+  fit,
+  B = 4999,
+  seed = 260818
+)
+```
+
+# 9. Random-slope variance
+
+```{r slope-fit}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  rs <- mixed_random_slopes(
+    z,
+    response = "height",
+    fixed = "treatment * time",
+    slope = "time",
+    group = "subject"
+  )
+}
+```
+
+```{r slope-bootstrap}
+if (exists("rs")) {
+  rs_var_demo <- mixed_boot_variance(
+    rs,
+    B = 49,
+    seed = 18
+  )
+}
+```
+
+A broad distribution near zero is a useful signal that the random-slope variance is weakly identified.
+
+# 10. Bootstrap predictions
+
+Create a prediction grid at the final time for both treatments.
+
+```{r pred-grid}
+new_height <- data.frame(
+  treatment = factor(c("T1", "T2"), levels = levels(z$treatment)),
+  time = c(max(z$time), max(z$time)),
+  subject = z$subject[1]
+)
+new_height
+```
+
+Population-level predictions omit subject-specific random effects.
+
+```{r pred-population}
+if (exists("fit")) {
+  pred_pop_demo <- mixed_boot_predict(
+    fit,
+    newdata = new_height,
+    B = 49,
+    re.form = NA,
+    seed = 260818
+  )
+
+  pred_pop_demo
+}
+```
+
+Conditional predictions include random effects for an existing subject.
+
+```{r pred-conditional}
+if (exists("fit")) {
+  pred_cond_demo <- mixed_boot_predict(
+    fit,
+    newdata = new_height,
+    B = 49,
+    re.form = NULL,
+    seed = 260818
+  )
+
+  pred_cond_demo
+}
+```
+
+**Interpretation.** Population and conditional predictions answer different questions. The first concerns the fixed population trajectory; the second conditions on estimated subject effects.
+
+# 11. BCa intervals
+
+`mixed_boot()` delegates BCa support to `confintROB` for supported model classes.
+
+```{r bca, eval=FALSE}
+if (
+  requireNamespace("confintROB", quietly = TRUE) &&
+  exists("fit")
+) {
+  boot_bca <- mixed_boot(
+    fit,
+    statistic = "fixed",
+    B = 1999,
+    method = "parametric",
+    interval = "BCa",
+    cluster = "subject",
+    seed = 260818
+  )
+}
+```
+
+This is not evaluated during vignette build because it can be computationally expensive and depends on an optional backend.
+
+# 12. Wild bootstrap
+
+A wild bootstrap can be useful when the resampling scheme is intended to be less reliant on homogeneous residual variance assumptions and the backend supports it.
+
+```{r wild, eval=FALSE}
+if (
+  requireNamespace("confintROB", quietly = TRUE) &&
+  exists("fit")
+) {
+  boot_wild <- mixed_boot(
+    fit,
+    statistic = "fixed",
+    B = 1999,
+    method = "wild",
+    interval = "percentile",
+    cluster = "subject",
+    seed = 260818
+  )
+}
+```
+
+Always describe the actual implementation and cluster definition rather than reporting only the word "bootstrap."
+
+# 13. Bootstrap for a robust fit
+
+```{r robust-fit}
+if (requireNamespace("robustlmm", quietly = TRUE)) {
+  robust <- mixed_robust(
+    height ~ treatment * time + (1 | subject),
+    data = z
+  )
+}
+```
+
+```{r robust-boot, eval=FALSE}
+if (
+  exists("robust") &&
+  requireNamespace("confintROB", quietly = TRUE)
+) {
+  robust_ci <- mixed_boot(
+    robust,
+    statistic = "fixed",
+    B = 1999,
+    method = "parametric",
+    interval = "BCa",
+    cluster = "subject",
+    seed = 260818
+  )
+}
+```
+
+# 14. Parametric-bootstrap model comparison
+
+`pbkrtest` can compare two nested `lmer` models through parametric bootstrap.
+
+```{r comparison-models}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  small <- mixed_fit(
+    height ~ time + (1 | subject),
+    data = z
+  )
+  large <- mixed_fit(
+    height ~ treatment + time + (1 | subject),
+    data = z
+  )
+}
+```
+
+Vignette-scale demonstration:
+
+```{r pb-compare-demo}
+if (
+  exists("small") && exists("large") &&
+  requireNamespace("pbkrtest", quietly = TRUE)
+) {
+  pb_cmp_demo <- mixed_compare(
+    small,
+    large,
+    method = "parametric-bootstrap",
+    nsim = 99,
+    seed = 260818
+  )
+  pb_cmp_demo
+}
+```
+
+Production version:
+
+```{r pb-compare-production, eval=FALSE}
+pb_cmp <- mixed_compare(
+  small,
+  large,
+  method = "parametric-bootstrap",
+  nsim = 4999,
+  seed = 260818
+)
+```
+
+# 15. Monte Carlo error matters
+
+If the bootstrap p-value or interval endpoint is near a decision threshold, rerun with a larger simulation count. A stable conclusion should not depend strongly on changing `B` from 999 to 4,999.
+
+A useful reproducibility check is to run the same analysis with two documented seeds and verify that substantive conclusions do not change.
+
+# 16. What bootstrap does not fix
+
+Bootstrap inference does not rescue:
+
+- the wrong experimental unit;
+- an inappropriate response distribution;
+- unmodeled spatial/temporal dependence;
+- nonconvergence;
+- a scientifically implausible mean structure;
+- severe extrapolation beyond the data.
+
+Fix structural model problems before resampling them thousands of times.
+
+# 17. Reporting checklist
+
+Report:
+
+- statistic bootstrapped;
+- parametric or wild method;
+- percentile or BCa interval;
+- number of replicates;
+- confidence level;
+- cluster definition if used;
+- seed;
+- prediction conditioning (`re.form`) if prediction intervals are reported;
+- any failed refits or convergence issues.
+
+# 18. Exercises
+
+1. Compare bootstrap intervals with Wald intervals for the same coefficient.
+2. Increase `B` from 49 to 199 and observe Monte Carlo stabilization.
+3. Bootstrap a random-slope variance and inspect boundary behavior.
+4. Compare population and conditional prediction intervals.
+
+# 19. Key take-home messages
+
+- Bootstrap inference is computationally intensive because models are refitted repeatedly.
+- Use small `B` only for teaching and syntax checks.
+- Variance components often benefit from asymmetric interval methods.
+- Population and conditional predictions are different estimands.
+- Always report the resampling method, replication count, interval type, and seed.
+
+# 20. Next vignette
+
+Continue with `08-gamlss-mixed.Rmd` for distributional regression beyond a single mean parameter.

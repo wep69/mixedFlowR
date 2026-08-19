@@ -1,0 +1,981 @@
+---
+title: "Public API: Three Worked Examples per Function"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Public API: Three Worked Examples per Function}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval=FALSE, collapse=TRUE, comment="#>")
+```
+
+# Purpose
+
+This catalog is the final reference module in the tutorial sequence. It mirrors the public API and gives **three pedagogically distinct examples for every exported function**: a minimal use, a realistic agronomic use, and a more demanding or discrepant use whenever that distinction is meaningful.
+
+The catalog is deliberately different from the focused tutorials. The focused vignettes use `eval = TRUE` by default so that readers see real tables, figures, diagnostics, and model objects. This catalog contains more than two hundred example calls, including optional heavy backends and deliberate failure/safeguard cases. Therefore, the catalog displays its examples without evaluating them during vignette build. Run the examples selectively after completing the corresponding focused vignette.
+
+The examples are teaching material, not numerical validation evidence. Runtime validation is performed separately through `tests/testthat/`, backend golden tests, frozen datasets, and the simulation battery described in `18-validation-reproducibility.Rmd`.
+
+# How to use this catalog
+
+Do not read the API alphabetically from beginning to end on a first pass. Start from the scientific question and move to the relevant function family.
+
+| Scientific task | Blocks | Functions to find first |
+|---|---:|---|
+| audit experimental design | 1--4 | `mixed_design_audit()`, `mixed_hierarchy()`, `mixed_balance()`, `mixed_pseudorep()` |
+| classical split-plot bridge | 5--10 | `fit_legacy_splitplot()`, `splitplot_ems()`, `splitplot_anova()`, `compare_legacy_mixed()` |
+| Gaussian LMM structure | 11--16 | `mixed_fit()`, `mixed_random_intercepts()`, `mixed_random_slopes()`, `mixed_nested()`, `mixed_crossed()`, `mixed_blup()` |
+| non-Gaussian GLMM | 17--21 | `mixed_glmm()`, `mixed_binomial()`, `mixed_count()`, `mixed_beta()`, `mixed_zero_inflated()` |
+| residual/covariance dependence | 22--31 | `mixed_ar1()`, `mixed_car1()`, `mixed_heterogeneity()`, `mixed_toeplitz()`, `mixed_covariance_compare()` |
+| robust sensitivity | 32--36 | `mixed_robust()`, `mixed_compare_robust()`, `mixed_robust_influence()`, `mixed_contamination()` |
+| bootstrap uncertainty | 37--40 | `mixed_boot()`, `mixed_boot_fixed()`, `mixed_boot_variance()`, `mixed_boot_predict()` |
+| mixed GAMLSS | 41--45 | `mixed_gamlss()`, `mixed_gamlss_parameters()`, `mixed_gamlss_quantiles()` |
+| Bayesian multilevel | 46--51 | `mixed_prior()`, `mixed_prior_predictive()`, `mixed_bayes()`, `mixed_pp_check()`, `mixed_loo()` |
+| qualitative/quantitative effects | 52--56 | `mixed_emmeans()`, `mixed_contrasts()`, `mixed_trend()`, `mixed_curve()`, `mixed_optimum()` |
+| nonlinear/random regression | 57--60 | `mixed_growth()`, `mixed_dose_response()`, `mixed_nonlinear()`, `mixed_random_curve()` |
+| spatial and MET/GxE | 61--64 | `mixed_spatial_field()`, `mixed_spatial_surface()`, `mixed_met()`, `mixed_gxe()` |
+| diagnosis, output, teaching | 65--70 | `mixed_diagnose()`, `mixed_compare()`, `mixed_table()`, `mixed_plot()`, `mixed_report()`, `mixed_tour()` |
+
+## The three-example grammar
+
+For each function, interpret the three examples as a progression rather than three recipes to copy blindly:
+
+1. **Example 1, minimal:** shows the smallest scientifically coherent call.
+2. **Example 2, applied:** changes treatment structure, backend, family, or inferential target to represent a realistic agronomic question.
+3. **Example 3, stress/sensitivity:** demonstrates imbalance, alternative coding, covariance complexity, a diagnostic case, or an explicit safeguard when useful.
+
+When an example is computationally intensive, first reproduce the smaller executable example in the focused vignette. Then increase bootstrap replications, MCMC iterations, spatial complexity, or covariance rank for the final analysis.
+
+## Read the output in four layers
+
+Regardless of function family, interpret results in this order:
+
+1. **Design layer:** does the model respect randomization and the experimental unit?
+2. **Fit layer:** did estimation converge and is the requested structure identifiable?
+3. **Inference layer:** what estimand, uncertainty measure, multiplicity rule, or predictive target is being reported?
+4. **Scientific layer:** is the estimated effect large, plausible, stable, and useful on the agronomic scale?
+
+The catalog starts below. For conceptual explanations and complete interpretations, return to the focused vignette listed for that function family.
+
+## `compare_legacy_mixed()`
+
+```r
+d <- mixed_data("splitplot")
+# Example 1: canonical comparison
+{if (requireNamespace("lme4", quietly=TRUE)) compare_legacy_mixed(d,"yield","block","variety","nitrogen")}
+# Example 2: nitrogen factor
+d$nf <- factor(d$nitrogen)
+{if (requireNamespace("lme4", quietly=TRUE)) compare_legacy_mixed(d,"yield","block","variety","nf")}
+# Example 3: ML sensitivity fit
+{if (requireNamespace("lme4", quietly=TRUE)) compare_legacy_mixed(d,"yield","block","variety","nitrogen",REML=FALSE)}
+```
+
+## `fit_legacy_splitplot()`
+
+```r
+d <- mixed_data("splitplot")
+# Example 1: standard balanced split-plot
+fit_legacy_splitplot(d,"yield","block","variety","nitrogen")
+# Example 2: nitrogen treated as a factor
+d$nitrogen_f <- factor(d$nitrogen)
+fit_legacy_splitplot(d,"yield","block","variety","nitrogen_f")
+# Example 3: shifted response, same randomization
+d$yield2 <- d$yield + 10
+fit_legacy_splitplot(d,"yield2","block","variety","nitrogen")
+```
+
+## `fit_legacy_splitsplit()`
+
+```r
+d <- mixed_data("splitplot"); d$stage <- factor(rep(c("S1","S2"), length.out=nrow(d)))
+# Example 1: three treatment strata
+fit_legacy_splitsplit(d,"yield","block","variety","nitrogen","stage")
+# Example 2: factor-coded nitrogen
+d$nf <- factor(d$nitrogen); fit_legacy_splitsplit(d,"yield","block","variety","nf","stage")
+# Example 3: centered response
+d$yc <- d$yield-mean(d$yield); fit_legacy_splitsplit(d,"yc","block","variety","nitrogen","stage")
+```
+
+## `fit_legacy_stripplot()`
+
+```r
+d <- mixed_data("splitplot"); d$A <- factor(d$variety); d$B <- factor(d$nitrogen)
+# Example 1: strip factors A and B
+fit_legacy_stripplot(d,"yield","block","A","B")
+# Example 2: subset of nitrogen levels
+fit_legacy_stripplot(subset(d,nitrogen<=100),"yield","block","A","B")
+# Example 3: centered response
+d$yc<-d$yield-mean(d$yield); fit_legacy_stripplot(d,"yc","block","A","B")
+```
+
+## `mixed_anova()`
+
+```r
+d<-mixed_data("splitplot")
+# Example 1: Satterthwaite tests
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("lmerTest",quietly=TRUE)){m<-mixed_fit(yield~variety*nitrogen+(1|block)+(1|block:variety),d);mixed_anova(m)}}
+# Example 2: Kenward-Roger tests
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("lmerTest",quietly=TRUE)&&requireNamespace("pbkrtest",quietly=TRUE)){m<-mixed_fit(yield~variety*nitrogen+(1|block)+(1|block:variety),d);mixed_anova(m,"Kenward-Roger")}}
+# Example 3: backend likelihood table
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(yield~variety*nitrogen+(1|block),d);mixed_anova(m,"backend")}}
+```
+
+## `mixed_ar1()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: residual AR1
+{if(requireNamespace("nlme",quietly=TRUE)) mixed_ar1(d,"height","treatment*time","time","subject")}
+# Example 2: lme4 structured component
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_ar1(d,"height","treatment*time","time","subject",engine="lme4")}
+# Example 3: glmmTMB structured component
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_ar1(d,"height","treatment*time","time","subject",engine="glmmTMB")}
+```
+
+## `mixed_balance()`
+
+```r
+d <- mixed_data("splitplot")
+# Example 1: full split-plot cell support
+mixed_balance(d, c("block","variety","nitrogen"))
+# Example 2: treatment by time support
+mixed_balance(mixed_data("longitudinal"), c("treatment","time"))
+# Example 3: reveal one missing cell
+mixed_balance(d[-1,], c("block","variety","nitrogen"))
+```
+
+## `mixed_bayes()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: Gaussian random intercept
+{mixed_bayes(height~treatment*time+(1|subject),d,chains=2,iter=1000)}
+# Example 2: random slope
+{mixed_bayes(height~time+(time|subject),d,chains=2,iter=1000)}
+# Example 3: binomial multilevel model
+{b<-mixed_data("binomial");mixed_bayes(diseased|trials(total)~treatment+(1|block),b,family=binomial(),chains=2,iter=1000)}
+```
+
+## `mixed_beta()`
+
+```r
+b<-mixed_data("beta")
+# Example 1: treatment beta mixed model
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_beta(severity~treatment+(1|block),b)}
+# Example 2: logit with plot grouping
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_beta(severity~treatment+(1|plot),b,"logit")}
+# Example 3: probit link
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_beta(severity~treatment+(1|block),b,"probit")}
+```
+
+## `mixed_binomial()`
+
+```r
+b<-mixed_data("binomial")
+# Example 1: treatment incidence
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_binomial(b,"diseased","healthy","treatment","block")}
+# Example 2: include plot as grouping factor
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_binomial(b,"diseased","healthy","treatment","plot")}
+# Example 3: glmmTMB backend
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_binomial(b,"diseased","healthy","treatment","block",engine="glmmTMB")}
+```
+
+## `mixed_blocks()`
+
+```r
+# Example 1: all 70 blocks
+mixed_blocks()
+# Example 2: bootstrap blocks
+mixed_blocks("Bootstrap")
+# Example 3: spatial blocks
+mixed_blocks("Spatial|field")
+```
+
+## `mixed_blup()`
+
+```r
+z<-mixed_data("longitudinal")
+# Example 1: random intercept and slope BLUPs
+{if(requireNamespace("lme4",quietly=TRUE)){f<-mixed_fit(height~treatment*time+(time|subject),z); mixed_blup(f)}}
+# Example 2: selected grouping factor
+{if(requireNamespace("lme4",quietly=TRUE)){f<-mixed_fit(height~time+(1|subject),z); mixed_blup(f,"subject")}}
+# Example 3: glmmTMB conditional effects
+c<-mixed_data("counts"); {if(requireNamespace("glmmTMB",quietly=TRUE)){f<-mixed_glmm(count~treatment+(1|plot),c,family=poisson(),engine="glmmTMB"); mixed_blup(f)}}
+```
+
+## `mixed_boot()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: fixed-effect parametric bootstrap
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);mixed_boot(m,"fixed",B=20,seed=1)}}
+# Example 2: variance-component bootstrap
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);mixed_boot(m,"variance",B=20,seed=2)}}
+# Example 3: BCa via confintROB
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("confintROB",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);mixed_boot(m,"fixed",B=999,interval="BCa",cluster="subject")}}
+```
+
+## `mixed_boot_fixed()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: small teaching bootstrap
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);mixed_boot_fixed(m,B=20)}}
+# Example 2: 90 percent intervals
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);mixed_boot_fixed(m,B=20,level=.90)}}
+# Example 3: reproducible seed
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(height~treatment*time+(1|subject),d);mixed_boot_fixed(m,B=20,seed=260818)}}
+```
+
+## `mixed_boot_predict()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: population predictions
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);g<-data.frame(time=c(0,5),subject=d$subject[1]);mixed_boot_predict(m,g,B=20)}}
+# Example 2: conditional predictions
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);g<-d[1:3,];mixed_boot_predict(m,g,B=20,re.form=NULL)}}
+# Example 3: 90 percent interval
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(height~treatment*time+(1|subject),d);mixed_boot_predict(m,d[1:4,],B=20,level=.90)}}
+```
+
+## `mixed_boot_variance()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: variance bootstrap
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);mixed_boot_variance(m,B=20)}}
+# Example 2: random slope variance
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_random_slopes(d,"height","time","time","subject");mixed_boot_variance(m,B=20)}}
+# Example 3: alternative seed
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(height~treatment+(1|subject),d);mixed_boot_variance(m,B=20,seed=7)}}
+```
+
+## `mixed_capabilities()`
+
+```r
+# Example 1: all capabilities
+mixed_capabilities()
+# Example 2: inspect installed engines
+subset(mixed_capabilities(), installed)
+# Example 3: inspect unavailable engines
+subset(mixed_capabilities(), !installed)
+```
+
+## `mixed_car1()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: regular observations
+{if(requireNamespace("nlme",quietly=TRUE)) mixed_car1(d,"height","treatment*time","time","subject")}
+# Example 2: irregular subset
+di<-d[!(d$subject=="S01" & d$time==2),]; {if(requireNamespace("nlme",quietly=TRUE)) mixed_car1(di,"height","treatment*time","time","subject")}
+# Example 3: reduced fixed model
+{if(requireNamespace("nlme",quietly=TRUE)) mixed_car1(d,"height","time","time","subject")}
+```
+
+## `mixed_cld()`
+
+```r
+d<-mixed_data("splitplot")
+# Example 1: variety grouping
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)&&requireNamespace("multcompView",quietly=TRUE)){m<-mixed_fit(yield~variety+nitrogen+(1|block),d);mixed_cld(m,~variety)}}
+# Example 2: Sidak adjustment
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)&&requireNamespace("multcompView",quietly=TRUE)){m<-mixed_fit(yield~variety+nitrogen+(1|block),d);mixed_cld(m,~variety,"sidak")}}
+# Example 3: existing EMM grid
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)&&requireNamespace("multcompView",quietly=TRUE)){m<-mixed_fit(yield~variety+nitrogen+(1|block),d);e<-mixed_emmeans(m,~variety);mixed_cld(e)}}
+```
+
+## `mixed_compare()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: information criteria
+{if(requireNamespace("lme4",quietly=TRUE)){a<-mixed_fit(height~time+(1|subject),d,REML=FALSE);b<-mixed_fit(height~treatment*time+(1|subject),d,REML=FALSE);mixed_compare(a,b)}}
+# Example 2: valid fixed-effect LRT under ML
+{if(requireNamespace("lme4",quietly=TRUE)){a<-mixed_fit(height~time+(1|subject),d,REML=FALSE);b<-mixed_fit(height~treatment+time+(1|subject),d,REML=FALSE);mixed_compare(a,b,method="LRT")}}
+# Example 3: covariance candidates
+{if(requireNamespace("nlme",quietly=TRUE)){a<-mixed_ar1(d,"height","time","time","subject");b<-mixed_car1(d,"height","time","time","subject");mixed_compare(a,b)}}
+```
+
+## `mixed_compare_robust()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: explicit pair
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("robustlmm",quietly=TRUE)){a<-mixed_fit(height~time+(1|subject),d);b<-mixed_robust(height~time+(1|subject),d);mixed_compare_robust(a,b)}}
+# Example 2: automatic robust refit from a stored mixedFlowR fit
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("robustlmm",quietly=TRUE)){a<-mixed_fit(height~treatment*time+(1|subject),d);mixed_compare_robust(a)}}
+# Example 3: contaminated model
+dc<-d;dc$height[1]<-dc$height[1]+25; {if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("robustlmm",quietly=TRUE)){a<-mixed_fit(height~time+(1|subject),dc);b<-mixed_robust(height~time+(1|subject),dc);mixed_compare_robust(a,b)}}
+```
+
+## `mixed_contamination()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: observation flags
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);mixed_contamination(m)}}
+# Example 2: stricter threshold
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);mixed_contamination(m,threshold=3)}}
+# Example 3: cluster aggregation
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);mixed_contamination(m,"subject")}}
+```
+
+## `mixed_contrasts()`
+
+```r
+d<-mixed_data("splitplot")
+# Example 1: Tukey variety contrasts
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)){m<-mixed_fit(yield~variety*nitrogen+(1|block)+(1|block:variety),d);mixed_contrasts(m,~variety)}}
+# Example 2: treatment-vs-control contrasts
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)){m<-mixed_fit(yield~variety+nitrogen+(1|block),d);mixed_contrasts(m,~variety,"trt.vs.ctrl")}}
+# Example 3: contrasts from precomputed EMMs
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)){m<-mixed_fit(yield~variety+nitrogen+(1|block),d);e<-mixed_emmeans(m,~variety);mixed_contrasts(e,method="pairwise")}}
+```
+
+## `mixed_count()`
+
+```r
+c<-mixed_data("counts")
+# Example 1: Poisson
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_count(count~treatment*time+(1|plot),c,"poisson","lme4")}
+# Example 2: negative-binomial 2
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_count(count~treatment*time+(1|plot),c,"nbinom2")}
+# Example 3: negative-binomial 1
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_count(count~treatment+(1|plot),c,"nbinom1")}
+```
+
+## `mixed_covariance()`
+
+```r
+# Example 1: discrete AR(1)
+mixed_covariance("ar1", "time", "subject")
+# Example 2: continuous AR(1)
+mixed_covariance("car1", "day", "plant")
+# Example 3: Matern spatial structure
+mixed_covariance("mat", group="field", spatial=c("row","col"))
+```
+
+## `mixed_covariance_compare()`
+
+```r
+# Example 1: empty comparison is valid metadata
+mixed_covariance_compare()
+# Example 2: compare two stored candidates
+{if(requireNamespace("nlme",quietly=TRUE)){d<-mixed_data("longitudinal"); m1<-mixed_ar1(d,"height","time","time","subject"); m2<-mixed_car1(d,"height","time","time","subject"); mixed_covariance_compare(m1,m2)}}
+# Example 3: named candidates
+{if(requireNamespace("nlme",quietly=TRUE)){d<-mixed_data("longitudinal"); a<-mixed_ar1(d,"height","time","time","subject"); mixed_covariance_compare(AR1=a)}}
+```
+
+## `mixed_covariance_plot()`
+
+```r
+# Example 1: matrix utility from a fitted model
+{if(requireNamespace("lme4",quietly=TRUE)){d<-mixed_data("longitudinal");m<-mixed_random_slopes(d,"height","treatment*time","time","subject");mixed_covariance_plot(m)}}
+# Example 2: explicitly identify group
+{if(requireNamespace("lme4",quietly=TRUE)){d<-mixed_data("longitudinal");m<-mixed_random_slopes(d,"height","time","time","subject");mixed_covariance_plot(m,"subject")}}
+# Example 3: show covariance rather than correlation
+{if(requireNamespace("lme4",quietly=TRUE)){d<-mixed_data("longitudinal");m<-mixed_random_slopes(d,"height","time","time","subject");mixed_covariance_plot(m,correlation=FALSE)}}
+```
+
+## `mixed_crossed()`
+
+```r
+d<-mixed_data("met"); d$year<-factor(rep(1:3,length.out=nrow(d)))
+# Example 1: genotype and environment random effects
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_crossed(d,"yield","1",c("genotype","environment"))}
+# Example 2: genotype and replicate
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_crossed(d,"yield","environment",c("genotype","rep"))}
+# Example 3: three crossed sources
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_crossed(d,"yield","1",c("genotype","environment","year"))}
+```
+
+## `mixed_curve()`
+
+```r
+d<-mixed_data("splitplot")
+# Example 1: nitrogen curve
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)){m<-mixed_fit(yield~variety*nitrogen+(1|block)+(1|block:variety),d);mixed_curve(m,"nitrogen",seq(0,150,25),"variety")}}
+# Example 2: longitudinal curves
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)){x<-mixed_data("longitudinal");m<-mixed_fit(height~treatment*time+(1|subject),x);mixed_curve(m,"time",seq(0,5,.5),"treatment")}}
+# Example 3: population curve without by factor
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)){m<-mixed_fit(yield~nitrogen+(1|block),d);mixed_curve(m,"nitrogen",seq(0,150,10))}}
+```
+
+## `mixed_data()`
+
+```r
+# Example 1: split-plot data
+head(mixed_data("splitplot"))
+# Example 2: repeated measures
+head(mixed_data("longitudinal"))
+# Example 3: spatial field trial
+head(mixed_data("spatial"))
+```
+
+## `mixed_design_audit()`
+
+```r
+# Example 1: balanced split-plot
+d <- mixed_data("splitplot")
+mixed_design_audit(d, "yield", block="block", whole="variety", sub="nitrogen")
+# Example 2: repeated measurements
+z <- mixed_data("longitudinal")
+mixed_design_audit(z, "height", subject="subject", time="time")
+# Example 3: deliberately incomplete design
+d2 <- d[-1, ]
+mixed_design_audit(d2, "yield", block="block", whole="variety", sub="nitrogen")
+```
+
+## `mixed_diagnose()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: LMM diagnostics
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);mixed_diagnose(m)}}
+# Example 2: random-slope singularity screen
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_random_slopes(d,"height","time","time","subject");mixed_diagnose(m)}}
+# Example 3: simulation diagnostics for a count model
+{if(requireNamespace("glmmTMB",quietly=TRUE)&&requireNamespace("DHARMa",quietly=TRUE)){c<-mixed_data("counts");m<-mixed_count(count~treatment*time+(1|plot),c,"nbinom2");mixed_diagnose(m,simulate=TRUE,nsim=50)}}
+```
+
+## `mixed_dose_response()`
+
+```r
+d<-mixed_data("dose_response")
+# Example 1: four-parameter logistic
+{if(requireNamespace("nlme",quietly=TRUE)) mixed_dose_response(d,"response","dose","unit")}
+# Example 2: subset of units
+{if(requireNamespace("nlme",quietly=TRUE)) mixed_dose_response(subset(d,as.integer(sub("U","",unit))<=20),"response","dose","unit")}
+# Example 3: user-supplied pooled starts
+{if(requireNamespace("nlme",quietly=TRUE)){st<-stats::getInitial(response~SSfpl(dose,A,B,xmid,scal),d);mixed_dose_response(d,"response","dose","unit",st)}}
+```
+
+## `mixed_emmeans()`
+
+```r
+d<-mixed_data("splitplot")
+# Example 1: variety means
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)){m<-mixed_fit(yield~variety*nitrogen+(1|block)+(1|block:variety),d);mixed_emmeans(m,~variety)}}
+# Example 2: variety at nitrogen levels
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)){m<-mixed_fit(yield~variety*nitrogen+(1|block)+(1|block:variety),d);mixed_emmeans(m,~variety|nitrogen,at=list(nitrogen=c(0,150)))}}
+# Example 3: response scale for GLMM
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)){b<-mixed_data("binomial");m<-mixed_glmm(cbind(diseased,healthy)~treatment+(1|block),b,binomial());mixed_emmeans(m,~treatment,type="response")}}
+```
+
+## `mixed_fit()`
+
+```r
+d <- mixed_data("splitplot")
+# Example 1: Gaussian split-plot LMM
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_fit(yield~variety*nitrogen+(1|block)+(1|block:variety),d)}
+# Example 2: longitudinal LMM with random slope
+z <- mixed_data("longitudinal")
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_fit(height~treatment*time+(time|subject),z)}
+# Example 3: correlated residuals via nlme
+{if(requireNamespace("nlme",quietly=TRUE)) mixed_fit(height~treatment*time,z,engine="nlme",random=~time|subject,correlation=nlme::corAR1(form=~time|subject))}
+```
+
+## `mixed_gamlss()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: Gaussian GAMLSS with subject random effect
+{if(requireNamespace("gamlss",quietly=TRUE)) mixed_gamlss(height~treatment*time,d,family="NO",random="subject")}
+# Example 2: model scale by treatment
+{if(requireNamespace("gamlss",quietly=TRUE)) mixed_gamlss(height~time,d,family="NO",sigma.formula=~treatment,random="subject")}
+# Example 3: random effect represented through nlme
+{if(requireNamespace("gamlss",quietly=TRUE)&&requireNamespace("nlme",quietly=TRUE)) mixed_gamlss(height~time,d,family="NO",re_random=~1|subject)}
+```
+
+## `mixed_gamlss_diagnose()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: default diagnostic
+{if(requireNamespace("gamlss",quietly=TRUE)){m<-mixed_gamlss(height~time,d,random="subject");mixed_gamlss_diagnose(m)}}
+# Example 2: scale model
+{if(requireNamespace("gamlss",quietly=TRUE)){m<-mixed_gamlss(height~time,d,sigma.formula=~treatment,random="subject");mixed_gamlss_diagnose(m)}}
+# Example 3: inspect residual table
+{if(requireNamespace("gamlss",quietly=TRUE)){m<-mixed_gamlss(height~treatment*time,d,random="subject");mixed_gamlss_diagnose(m)$data}}
+```
+
+## `mixed_gamlss_parameters()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: mu and sigma
+{if(requireNamespace("gamlss",quietly=TRUE)){m<-mixed_gamlss(height~time,d,random="subject");mixed_gamlss_parameters(m)}}
+# Example 2: mu only
+{if(requireNamespace("gamlss",quietly=TRUE)){m<-mixed_gamlss(height~time,d,random="subject");mixed_gamlss_parameters(m,"mu")}}
+# Example 3: heteroscedastic scale model
+{if(requireNamespace("gamlss",quietly=TRUE)){m<-mixed_gamlss(height~time,d,sigma.formula=~treatment,random="subject");mixed_gamlss_parameters(m)}}
+```
+
+## `mixed_gamlss_quantiles()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: quartiles
+{if(requireNamespace("gamlss",quietly=TRUE)&&requireNamespace("gamlss.dist",quietly=TRUE)){m<-mixed_gamlss(height~time,d,random="subject");mixed_gamlss_quantiles(m,c(.25,.5,.75))}}
+# Example 2: median
+{if(requireNamespace("gamlss",quietly=TRUE)&&requireNamespace("gamlss.dist",quietly=TRUE)){m<-mixed_gamlss(height~time,d,random="subject");mixed_gamlss_quantiles(m,.5)}}
+# Example 3: central 95 percent limits
+{if(requireNamespace("gamlss",quietly=TRUE)&&requireNamespace("gamlss.dist",quietly=TRUE)){m<-mixed_gamlss(height~time,d,sigma.formula=~treatment,random="subject");mixed_gamlss_quantiles(m,c(.025,.975))}}
+```
+
+## `mixed_gamlss_select()`
+
+```r
+# Example 1: no candidates
+mixed_gamlss_select()
+# Example 2: compare scale structures
+{if(requireNamespace("gamlss",quietly=TRUE)){d<-mixed_data("longitudinal");a<-mixed_gamlss(height~time,d,random="subject");b<-mixed_gamlss(height~time,d,sigma.formula=~treatment,random="subject");mixed_gamlss_select(a,b)}}
+# Example 3: stronger complexity penalty
+{if(requireNamespace("gamlss",quietly=TRUE)){d<-mixed_data("longitudinal");a<-mixed_gamlss(height~time,d,random="subject");mixed_gamlss_select(a,k=log(nrow(d)))}}
+```
+
+## `mixed_glmm()`
+
+```r
+c<-mixed_data("counts")
+# Example 1: Poisson GLMM
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_glmm(count~treatment*time+(1|plot),c,poisson())}
+# Example 2: binomial incidence
+b<-mixed_data("binomial"); {if(requireNamespace("lme4",quietly=TRUE)) mixed_glmm(cbind(diseased,healthy)~treatment+(1|block),b,binomial())}
+# Example 3: glmmTMB Poisson
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_glmm(count~treatment+(1|plot),c,poisson(),engine="glmmTMB")}
+```
+
+## `mixed_growth()`
+
+```r
+g<-mixed_data("growth")
+# Example 1: logistic growth
+{if(requireNamespace("nlme",quietly=TRUE)) mixed_growth(g,"biomass","time","plant")}
+# Example 2: Gompertz growth
+{if(requireNamespace("nlme",quietly=TRUE)) mixed_growth(g,"biomass","time","plant","gompertz")}
+# Example 3: one treatment subset
+{if(requireNamespace("nlme",quietly=TRUE)) mixed_growth(subset(g,treatment=="control"),"biomass","time","plant")}
+```
+
+## `mixed_gxe()`
+
+```r
+d<-mixed_data("met")
+# Example 1: diagonal GxE covariance
+{if(requireNamespace("sommer",quietly=TRUE)) mixed_gxe(d,"yield","genotype","environment","diagonal")}
+# Example 2: unstructured GxE covariance
+{if(requireNamespace("sommer",quietly=TRUE)) mixed_gxe(d,"yield","genotype","environment","unstructured")}
+# Example 3: two-factor reduced-rank model
+{if(requireNamespace("sommer",quietly=TRUE)) mixed_gxe(d,"yield","genotype","environment","fa",nPC=2)}
+```
+
+## `mixed_heterogeneity()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: treatment-specific residual variance
+{if(requireNamespace("nlme",quietly=TRUE)) mixed_heterogeneity(height~treatment*time,d,~1|subject,"treatment")}
+# Example 2: time-specific residual variance
+d$timef<-factor(d$time); {if(requireNamespace("nlme",quietly=TRUE)) mixed_heterogeneity(height~treatment*time,d,~1|subject,"timef")}
+# Example 3: heterogeneity plus AR1
+{if(requireNamespace("nlme",quietly=TRUE)) mixed_heterogeneity(height~treatment*time,d,~1|subject,"treatment",nlme::corAR1(form=~time|subject))}
+```
+
+## `mixed_hierarchy()`
+
+```r
+d <- mixed_data("splitplot")
+# Example 1: split-plot hierarchy
+mixed_hierarchy(d, block="block", whole="variety", sub="nitrogen")
+# Example 2: longitudinal hierarchy
+mixed_hierarchy(mixed_data("longitudinal"), subject="subject", time="time")
+# Example 3: blocks only
+mixed_hierarchy(d, block="block")
+```
+
+## `mixed_influence()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: subject deletion diagnostics
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("influence.ME",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);mixed_influence(m,"subject")}}
+# Example 2: treatment model
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("influence.ME",quietly=TRUE)){m<-mixed_fit(height~treatment*time+(1|subject),d);mixed_influence(m,"subject")}}
+# Example 3: robust residual fallback
+{if(requireNamespace("robustlmm",quietly=TRUE)){m<-mixed_robust(height~time+(1|subject),d);mixed_influence(m,"subject")}}
+```
+
+## `mixed_loo()`
+
+```r
+# Example 1: single model
+{d<-mixed_data("longitudinal");m<-mixed_bayes(height~time+(1|subject),d,chains=2,iter=1000);mixed_loo(m)}
+# Example 2: treatment model
+{d<-mixed_data("longitudinal");m<-mixed_bayes(height~treatment*time+(1|subject),d,chains=2,iter=1000);mixed_loo(m)}
+# Example 3: compare two models
+{d<-mixed_data("longitudinal");a<-mixed_bayes(height~time+(1|subject),d,chains=2,iter=1000);b<-mixed_bayes(height~treatment*time+(1|subject),d,chains=2,iter=1000);mixed_loo(a,b)}
+```
+
+## `mixed_met()`
+
+```r
+m<-mixed_data("met")
+# Example 1: genotype and environment random components
+{if(requireNamespace("sommer",quietly=TRUE)) mixed_met(yield~1,~genotype+environment,m)}
+# Example 2: environment fixed and genotype random
+{if(requireNamespace("sommer",quietly=TRUE)) mixed_met(yield~environment,~genotype,m)}
+# Example 3: legacy dense solver
+{if(requireNamespace("sommer",quietly=TRUE)) mixed_met(yield~environment,~genotype,m,solver="mmer")}
+```
+
+## `mixed_nested()`
+
+```r
+d<-mixed_data("splitplot"); d$wp<-interaction(d$block,d$variety)
+# Example 1: block/whole-plot nesting
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_nested(d,"yield","variety*nitrogen",c("block","wp"))}
+# Example 2: one nesting level
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_nested(d,"yield","variety*nitrogen","block")}
+# Example 3: factor-coded nitrogen
+d$nf<-factor(d$nitrogen); {if(requireNamespace("lme4",quietly=TRUE)) mixed_nested(d,"yield","variety*nf",c("block","wp"))}
+```
+
+## `mixed_nonlinear()`
+
+```r
+g<-mixed_data("growth")
+# Example 1: nlme logistic growth
+{if(requireNamespace("nlme",quietly=TRUE)){st<-stats::getInitial(biomass~SSlogis(time,Asym,xmid,scal),g);mixed_nonlinear(biomass~SSlogis(time,Asym,xmid,scal),g,"nlme",fixed=Asym+xmid+scal~1,random=Asym~1,groups=~plant,start=st)}}
+# Example 2: lme4 nlmer logistic growth
+{if(requireNamespace("lme4",quietly=TRUE)){st<-stats::getInitial(biomass~SSlogis(time,Asym,xmid,scal),g);mixed_nonlinear(biomass~SSlogis(time,Asym,xmid,scal)~(Asym|plant),g,"lme4",start=st)}}
+# Example 3: Bayesian nonlinear formula supplied by the user
+{mixed_nonlinear(brms::bf(biomass~Asym/(1+exp((xmid-time)/scal)),Asym~1+(1|plant),xmid~1,scal~1,nl=TRUE),g,"brms")}
+```
+
+## `mixed_optimum()`
+
+```r
+d<-mixed_data("splitplot")
+# Example 1: maximum nitrogen response
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)){m<-mixed_quantitative(d,"yield","nitrogen","variety","block",degree=2);mixed_optimum(m,"nitrogen",c(0,150),"variety")}}
+# Example 2: minimum response
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)){m<-mixed_quantitative(d,"yield","nitrogen",group="block",degree=2);mixed_optimum(m,"nitrogen",c(0,150),objective="min")}}
+# Example 3: finer grid
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)){m<-mixed_quantitative(d,"yield","nitrogen","variety","block",degree=2);mixed_optimum(m,"nitrogen",c(0,150),"variety",n=501)}}
+```
+
+## `mixed_plot()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: observed measurements
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);mixed_plot(m,"raw",x="time",by="treatment")}}
+# Example 2: residual diagnostic
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);mixed_plot(m,"residuals")}}
+# Example 3: treatment curves with observed data and model uncertainty
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)){m<-mixed_fit(height~treatment*time+(1|subject),d);mixed_plot(m,"curve",x="time",by="treatment",values=seq(0,5,.25))}}
+```
+
+## `mixed_posterior()`
+
+```r
+# Example 1: all draws
+{d<-mixed_data("longitudinal");m<-mixed_bayes(height~time+(1|subject),d,chains=2,iter=500);mixed_posterior(m)}
+# Example 2: fixed effect draws
+{d<-mixed_data("longitudinal");m<-mixed_bayes(height~time+(1|subject),d,chains=2,iter=500);mixed_posterior(m,"b_time")}
+# Example 3: multiple variables
+{d<-mixed_data("longitudinal");m<-mixed_bayes(height~time+(1|subject),d,chains=2,iter=500);mixed_posterior(m,c("b_Intercept","b_time"))}
+```
+
+## `mixed_pp_check()`
+
+```r
+# Example 1: density overlay
+{d<-mixed_data("longitudinal");m<-mixed_bayes(height~time+(1|subject),d,chains=2,iter=500);mixed_pp_check(m)}
+# Example 2: ECDF overlay
+{d<-mixed_data("longitudinal");m<-mixed_bayes(height~time+(1|subject),d,chains=2,iter=500);mixed_pp_check(m,"ecdf_overlay")}
+# Example 3: interval PPC
+{d<-mixed_data("longitudinal");m<-mixed_bayes(height~treatment*time+(1|subject),d,chains=2,iter=500);mixed_pp_check(m,"intervals")}
+```
+
+## `mixed_prior()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: available priors
+{if(requireNamespace("brms",quietly=TRUE)) mixed_prior(height~time+(1|subject),d)}
+# Example 2: random-slope priors
+{if(requireNamespace("brms",quietly=TRUE)) mixed_prior(height~time+(time|subject),d)}
+# Example 3: binomial prior classes
+{if(requireNamespace("brms",quietly=TRUE)){b<-mixed_data("binomial");mixed_prior(diseased|trials(total)~treatment+(1|block),b,binomial())}}
+```
+
+## `mixed_prior_predictive()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: prior-only Gaussian model
+{mixed_prior_predictive(height~time+(1|subject),d,chains=2,iter=500)}
+# Example 2: treatment model
+{mixed_prior_predictive(height~treatment*time+(1|subject),d,chains=2,iter=500)}
+# Example 3: update an existing brms fit
+{m<-mixed_bayes(height~time+(1|subject),d,chains=2,iter=500);mixed_prior_predictive(m,chains=2,iter=500)}
+```
+
+## `mixed_pseudorep()`
+
+```r
+z <- mixed_data("longitudinal")
+# Example 1: repeated observations within plant
+mixed_pseudorep(z, "height", cluster="subject", treatment="treatment")
+# Example 2: split-plot whole-plot clusters
+d <- mixed_data("splitplot"); d$wp <- interaction(d$block,d$variety)
+mixed_pseudorep(d, "yield", cluster="wp", treatment="variety")
+# Example 3: no explicit cluster supplied
+mixed_pseudorep(d, "yield", treatment="variety")
+```
+
+## `mixed_quantitative()`
+
+```r
+d<-mixed_data("splitplot")
+# Example 1: linear nitrogen trends by variety
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_quantitative(d,"yield","nitrogen","variety","block",basis="linear")}
+# Example 2: quadratic nitrogen curves
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_quantitative(d,"yield","nitrogen","variety","block",degree=2,basis="polynomial")}
+# Example 3: natural spline trajectory
+{if(requireNamespace("lme4",quietly=TRUE)){z<-mixed_data("longitudinal");mixed_quantitative(z,"height","time","treatment","subject",basis="spline",df=3)}}
+```
+
+## `mixed_random_curve()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: linear random regression
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_random_curve("height","time",d,"subject",1,"treatment")}
+# Example 2: quadratic trajectory
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_random_curve("height","time",d,"subject",2,"treatment")}
+# Example 3: trajectory only
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_random_curve("height","time",d,"subject",1)}
+```
+
+## `mixed_random_intercepts()`
+
+```r
+z <- mixed_data("longitudinal")
+# Example 1: treatment-time random intercept
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_random_intercepts(z,"height","treatment*time","subject")}
+# Example 2: field block random intercept
+d<-mixed_data("splitplot"); {if(requireNamespace("lme4",quietly=TRUE)) mixed_random_intercepts(d,"yield","variety*nitrogen","block")}
+# Example 3: count GLMM random intercept
+c<-mixed_data("counts"); {if(requireNamespace("lme4",quietly=TRUE)) mixed_random_intercepts(c,"count","treatment*time","plot",family=poisson())}
+```
+
+## `mixed_random_slopes()`
+
+```r
+z<-mixed_data("longitudinal")
+# Example 1: correlated intercept/slope
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_random_slopes(z,"height","treatment*time","time","subject")}
+# Example 2: diagonal intercept/slope covariance
+{if(requireNamespace("lme4",quietly=TRUE)) mixed_random_slopes(z,"height","treatment*time","time","subject",correlated=FALSE)}
+# Example 3: centered time
+z$tc<-z$time-mean(z$time); {if(requireNamespace("lme4",quietly=TRUE)) mixed_random_slopes(z,"height","treatment*tc","tc","subject")}
+```
+
+## `mixed_report()`
+
+```r
+# Example 1: report path from a legacy fit
+d<-mixed_data("splitplot"); m<-fit_legacy_splitplot(d,"yield","block","variety","nitrogen"); tf<-tempfile(fileext=".md"); mixed_report(m,tf)
+# Example 2: custom title
+tf<-tempfile(fileext=".md"); mixed_report(m,tf,"Split-plot agronomic report")
+# Example 3: inspect generated text
+tf<-tempfile(fileext=".md"); mixed_report(m,tf); readLines(tf,n=5)
+```
+
+## `mixed_robust()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: random intercept
+{if(requireNamespace("robustlmm",quietly=TRUE)) mixed_robust(height~treatment*time+(1|subject),d)}
+# Example 2: random slope
+{if(requireNamespace("robustlmm",quietly=TRUE)) mixed_robust(height~time+(time|subject),d)}
+# Example 3: contaminated observation
+dc<-d; dc$height[1]<-dc$height[1]+30; {if(requireNamespace("robustlmm",quietly=TRUE)) mixed_robust(height~time+(1|subject),dc)}
+```
+
+## `mixed_robust_influence()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: observation screen
+{if(requireNamespace("robustlmm",quietly=TRUE)){m<-mixed_robust(height~time+(1|subject),d);mixed_robust_influence(m)}}
+# Example 2: cluster screen
+{if(requireNamespace("robustlmm",quietly=TRUE)){m<-mixed_robust(height~time+(1|subject),d);mixed_robust_influence(m,"subject")}}
+# Example 3: contaminated data
+dc<-d;dc$height[1]<-dc$height[1]+25; {if(requireNamespace("robustlmm",quietly=TRUE)){m<-mixed_robust(height~time+(1|subject),dc);mixed_robust_influence(m,"subject")}}
+```
+
+## `mixed_robust_vcov()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: CR2 by subject
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("clubSandwich",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);mixed_robust_vcov(m,"subject")}}
+# Example 2: CR1 by subject
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("clubSandwich",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);mixed_robust_vcov(m,"subject","CR1")}}
+# Example 3: supplied cluster vector
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("clubSandwich",quietly=TRUE)){m<-mixed_fit(height~treatment*time+(1|subject),d);mixed_robust_vcov(m,d$subject)}}
+```
+
+## `mixed_spatial_covariance()`
+
+```r
+s<-mixed_data("spatial")
+# Example 1: exponential spatial covariance
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_spatial_covariance(s,"yield","genotype+block","col","row","exp")}
+# Example 2: Gaussian spatial covariance
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_spatial_covariance(s,"yield","genotype","col","row","gau")}
+# Example 3: Matern spatial covariance
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_spatial_covariance(s,"yield","genotype+block","col","row","mat")}
+```
+
+## `mixed_spatial_field()`
+
+```r
+s<-mixed_data("spatial")
+# Example 1: genotype fixed, blocks random
+{if(requireNamespace("SpATS",quietly=TRUE)) mixed_spatial_field(s,"yield","genotype","col","row",random=~block)}
+# Example 2: genotype random
+{if(requireNamespace("SpATS",quietly=TRUE)) mixed_spatial_field(s,"yield","genotype","col","row",random=~block,genotype_as_random=TRUE)}
+# Example 3: finer spatial basis
+{if(requireNamespace("SpATS",quietly=TRUE)) mixed_spatial_field(s,"yield","genotype","col","row",random=~block,nseg=c(8,10))}
+```
+
+## `mixed_spatial_surface()`
+
+```r
+s<-mixed_data("spatial")
+# Example 1: default surface
+{if(requireNamespace("SpATS",quietly=TRUE)){m<-mixed_spatial_field(s,"yield","genotype","col","row",random=~block);mixed_spatial_surface(m)}}
+# Example 2: compact grid
+{if(requireNamespace("SpATS",quietly=TRUE)){m<-mixed_spatial_field(s,"yield","genotype","col","row",random=~block);mixed_spatial_surface(m,c(20,20))}}
+# Example 3: genotype random
+{if(requireNamespace("SpATS",quietly=TRUE)){m<-mixed_spatial_field(s,"yield","genotype","col","row",random=~block,genotype_as_random=TRUE);mixed_spatial_surface(m,c(25,25))}}
+```
+
+## `mixed_spatiotemporal()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: OU component for time
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_spatiotemporal(d,"height","treatment*time","time","subject","ou")}
+# Example 2: ordered AR1 component
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_spatiotemporal(d,"height","time","time","subject","ar1")}
+# Example 3: non-Gaussian repeated counts
+c<-mixed_data("counts"); {if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_spatiotemporal(c,"count","treatment*time","time","plot","ou",glmmTMB::nbinom2())}
+```
+
+## `mixed_table()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: fixed effects as a reusable data frame
+{if(requireNamespace("lme4",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);mixed_table(m,"fixed")}}
+# Example 2: variance components rendered for Markdown
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("knitr",quietly=TRUE)){m<-mixed_fit(height~time+(1|subject),d);mixed_table(m,"random",format="markdown")}}
+# Example 3: marginal means table
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)){m<-mixed_fit(height~treatment*time+(1|subject),d);mixed_table(m,"emmeans",specs=~treatment)}}
+```
+
+## `mixed_temporal_grid()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: time grid
+mixed_temporal_grid(d,"time",n=20)
+# Example 2: separate treatment curves
+mixed_temporal_grid(d,"time","treatment",20)
+# Example 3: retain two grouping variables
+mixed_temporal_grid(d,"time",c("treatment","block"),10)
+```
+
+## `mixed_toeplitz()`
+
+```r
+d<-mixed_data("longitudinal")
+# Example 1: Gaussian Toeplitz
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_toeplitz(d,"height","treatment*time","time","subject")}
+# Example 2: simpler mean
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_toeplitz(d,"height","time","time","subject")}
+# Example 3: counts on an ordered visit factor
+c<-mixed_data("counts"); {if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_toeplitz(c,"count","treatment*time","time","plot",glmmTMB::nbinom2())}
+```
+
+## `mixed_tour()`
+
+```r
+# Example 1: split-plot tour
+mixed_tour("splitplot")
+# Example 2: partial-pooling tour
+mixed_tour("random_effects")
+# Example 3: covariance tour
+mixed_tour("covariance")
+```
+
+## `mixed_trend()`
+
+```r
+d<-mixed_data("splitplot")
+# Example 1: nitrogen trend by variety
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)){m<-mixed_fit(yield~variety*nitrogen+(1|block)+(1|block:variety),d);mixed_trend(m,~variety,"nitrogen")}}
+# Example 2: common nitrogen trend
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)){m<-mixed_fit(yield~variety+nitrogen+(1|block),d);mixed_trend(m,~1,"nitrogen")}}
+# Example 3: longitudinal slope by treatment
+{if(requireNamespace("lme4",quietly=TRUE)&&requireNamespace("emmeans",quietly=TRUE)){x<-mixed_data("longitudinal");m<-mixed_fit(height~treatment*time+(time|subject),x);mixed_trend(m,~treatment,"time")}}
+```
+
+## `mixed_zero_inflated()`
+
+```r
+c<-mixed_data("counts")
+# Example 1: constant zero inflation
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_zero_inflated(count~treatment*time+(1|plot),c,ziformula=~1)}
+# Example 2: treatment-dependent zero inflation
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_zero_inflated(count~treatment+(1|plot),c,ziformula=~treatment)}
+# Example 3: dispersion model
+{if(requireNamespace("glmmTMB",quietly=TRUE)) mixed_zero_inflated(count~treatment+(1|plot),c,ziformula=~1,dispformula=~treatment)}
+```
+
+## `splitplot_anova()`
+
+```r
+d <- mixed_data("splitplot"); f <- fit_legacy_splitplot(d,"yield","block","variety","nitrogen")
+# Example 1: standard extraction
+splitplot_anova(f)
+# Example 2: factor-coded nitrogen
+d$nf <- factor(d$nitrogen); splitplot_anova(fit_legacy_splitplot(d,"yield","block","variety","nf"))
+# Example 3: transformed response
+d$logy <- log(d$yield); splitplot_anova(fit_legacy_splitplot(d,"logy","block","variety","nitrogen"))
+```
+
+## `splitplot_ems()`
+
+```r
+d <- mixed_data("splitplot")
+# Example 1: standard EMS map
+splitplot_ems(d,"block","variety","nitrogen")
+# Example 2: factor-coded nitrogen
+d$nf <- factor(d$nitrogen); splitplot_ems(d,"block","variety","nf")
+# Example 3: four blocks subset
+splitplot_ems(subset(d, block %in% levels(block)[1:4]),"block","variety","nitrogen")
+```
+

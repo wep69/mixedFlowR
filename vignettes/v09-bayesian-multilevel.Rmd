@@ -1,0 +1,354 @@
+---
+title: "Bayesian Multilevel Models: Priors, Posterior Inference, and Prediction"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{Bayesian Multilevel Models: Priors, Posterior Inference, and Prediction}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, error = FALSE,
+  collapse = TRUE, comment = "#>", fig.align = "center",
+  fig.width = 7, fig.height = 5, dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+This vignette introduces the Bayesian workflow implemented through `brms`, which fits generalized, nonlinear, multivariate, and distributional multilevel models using Stan [@burkner2017].
+
+The Bayesian module is intentionally more than a wrapper for obtaining credible intervals. A coherent workflow includes prior specification, prior predictive assessment, posterior diagnostics, posterior predictive checks, and predictive model evaluation.
+
+Because compiling and sampling Stan models can be expensive, **Bayesian fitting chunks in this vignette are shown with `eval=FALSE` by design**. This keeps routine package checks practical while preserving full analysis code.
+
+# 1. Learning objectives
+
+You will learn to:
+
+- inspect available prior classes;
+- specify scientifically meaningful priors;
+- perform prior predictive checks;
+- fit a Bayesian multilevel model;
+- inspect posterior draws;
+- understand credible intervals and direct probability statements;
+- use posterior predictive checks;
+- use leave-one-out predictive assessment;
+- distinguish Bayesian evidence from frequentist p-values.
+
+# 2. Data
+
+```{r data}
+library(mixedFlowR)
+z <- mixed_data("longitudinal")
+head(z)
+```
+
+# 3. Inspect prior structure
+
+`mixed_prior()` delegates to the `brms` prior-inspection machinery.
+
+```{r prior-classes}
+if (requireNamespace("brms", quietly = TRUE)) {
+  prior_classes <- mixed_prior(
+    height ~ treatment * time + (time | subject),
+    data = z
+  )
+
+  prior_classes
+}
+```
+
+This step is light enough to be evaluated when `brms` is installed because it does not sample the posterior.
+
+# 4. Why priors matter
+
+A prior should be interpreted on the scale of its parameter.
+
+For example:
+
+- intercept prior: plausible plant height at the reference treatment/time;
+- time slope prior: plausible rate of change per time unit;
+- group-level SD prior: plausible between-subject heterogeneity;
+- residual SD prior: plausible observation-level variability.
+
+Avoid choosing a prior only because it is described generically as "weakly informative." Translate it into the units of the agronomic response.
+
+# 5. Example prior specification
+
+```{r explicit-priors, eval=FALSE}
+priors <- c(
+  brms::prior(normal(20, 10), class = "Intercept"),
+  brms::prior(normal(0, 3), class = "b"),
+  brms::prior(exponential(1), class = "sd"),
+  brms::prior(exponential(1), class = "sigma")
+)
+```
+
+These are teaching values, not universal priors. Replace them with values justified by measurement scale and domain knowledge.
+
+# 6. Prior predictive simulation
+
+```{r prior-predictive, eval=FALSE}
+prior_fit <- mixed_prior_predictive(
+  height ~ treatment * time + (time | subject),
+  data   = z,
+  prior  = priors,
+  chains = 2,
+  iter   = 1000,
+  seed   = 260818
+)
+```
+
+A prior predictive check asks whether the prior model generates plausible data before the observed response informs the posterior.
+
+If simulated heights are physically absurd, revise the priors before fitting the posterior.
+
+# 7. Fit the Bayesian multilevel model
+
+```{r bayes-fit, eval=FALSE}
+bfit <- mixed_bayes(
+  height ~ treatment * time + (time | subject),
+  data   = z,
+  prior  = priors,
+  chains = 4,
+  iter   = 4000,
+  seed   = 260818
+)
+```
+
+For local exploratory runs, a smaller number of iterations may be used to verify syntax, but scientific inference should use adequate effective sample size and convergence diagnostics.
+
+# 8. Posterior draws
+
+```{r posterior-draws, eval=FALSE}
+draws <- mixed_posterior(bfit)
+draws
+```
+
+Select variables:
+
+```{r posterior-selected, eval=FALSE}
+time_draws <- mixed_posterior(
+  bfit,
+  variables = "b_time"
+)
+```
+
+Posterior draws allow direct calculation of derived scientific quantities.
+
+# 9. Credible intervals
+
+A 95% posterior credible interval contains 95% of posterior probability for the parameter under the fitted Bayesian model.
+
+It should not be described as "the same as a confidence interval but Bayesian."
+
+The interpretation depends on:
+
+- likelihood;
+- prior;
+- hierarchical structure;
+- posterior computation.
+
+# 10. Direct probability statements
+
+With posterior draws, questions such as these are natural:
+
+- `Pr(treatment effect > 0 | data, model)`;
+- `Pr(yield advantage > agronomic threshold | data, model)`;
+- `Pr(random-slope SD exceeds a meaningful value | data, model)`.
+
+A biologically meaningful threshold is often more informative than `Pr(beta > 0)` alone.
+
+```{r posterior-probability, eval=FALSE}
+d <- mixed_posterior(bfit, variables = "b_treatmentT2")
+mean(d$b_treatmentT2 > 0)
+mean(d$b_treatmentT2 > 2)
+```
+
+# 11. Posterior predictive checks
+
+```{r ppc-density, eval=FALSE}
+mixed_pp_check(
+  bfit,
+  type = "dens_overlay",
+  ndraws = 100
+)
+```
+
+Alternative ECDF check:
+
+```{r ppc-ecdf, eval=FALSE}
+mixed_pp_check(
+  bfit,
+  type = "ecdf_overlay",
+  ndraws = 100
+)
+```
+
+A model can have apparently precise posterior coefficients and still fail to reproduce key features of the observed data.
+
+# 12. Convergence diagnostics
+
+Inspect at least:
+
+- R-hat;
+- effective sample size;
+- divergent transitions;
+- energy or treedepth warnings when relevant;
+- trace plots for consequential parameters.
+
+Do not interpret posterior summaries if the sampler has not adequately explored the posterior.
+
+# 13. LOO predictive assessment
+
+```{r loo-single, eval=FALSE}
+loo_fit <- mixed_loo(bfit)
+loo_fit
+```
+
+Compare two models:
+
+```{r loo-compare, eval=FALSE}
+b0 <- mixed_bayes(
+  height ~ time + (time | subject),
+  data = z,
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  seed = 260818
+)
+
+mixed_loo(b0, bfit)
+```
+
+LOO comparison is predictive assessment, not a universal proof of the scientific truth of one model.
+
+# 14. Bayesian binomial example
+
+The disease-incidence dataset can be modeled with a binomial multilevel model.
+
+```{r bayes-binomial, eval=FALSE}
+b <- mixed_data("binomial")
+
+b_bin <- mixed_bayes(
+  diseased | trials(total) ~ treatment + (1 | block),
+  data = b,
+  family = binomial(),
+  chains = 4,
+  iter = 4000,
+  seed = 260818
+)
+```
+
+This illustrates that the Bayesian workflow extends naturally to non-Gaussian multilevel outcomes.
+
+# 15. Bayesian distributional model
+
+`brms` can model distributional parameters as predictors. That capability overlaps conceptually with GAMLSS but uses a Bayesian framework.
+
+A generic template:
+
+```{r distributional, eval=FALSE}
+bf_dist <- brms::bf(
+  height ~ treatment * time + (1 | subject),
+  sigma ~ treatment
+)
+
+b_dist <- mixed_bayes(
+  bf_dist,
+  data = z,
+  prior = distributional_priors,  # define scientifically justified priors before fitting
+  chains = 4,
+  iter = 4000,
+  seed = 260818
+)
+```
+
+`distributional_priors` is deliberately left as a user-defined object. Priors for distributional parameters should be chosen for the actual parameterization rather than copied blindly.
+
+# 16. Sensitivity to priors
+
+A Bayesian analysis should examine whether consequential conclusions change under reasonable prior alternatives.
+
+A useful sensitivity design is:
+
+1. weakly informative prior;
+2. domain-informed prior;
+3. more skeptical prior around a scientifically important treatment effect.
+
+If conclusions change dramatically, report that prior sensitivity rather than hiding it.
+
+# 17. Bayesian versus frequentist mixed models
+
+These approaches can use similar hierarchical likelihood structures but differ in inference.
+
+| Question | Frequentist LMM | Bayesian multilevel |
+|---|---|---|
+| fixed-effect uncertainty | sampling-based CI/test | posterior distribution |
+| random effects | estimated covariance + BLUPs | posterior distributions |
+| prior information | not explicit prior | explicit prior model |
+| model checking | residual diagnostics | residual + posterior predictive checks |
+| probability parameter exceeds threshold | indirect | direct posterior calculation |
+
+Neither framework removes the need to respect experimental design.
+
+# 18. Computational recommendations
+
+For reproducible scientific runs:
+
+- use a documented backend;
+- save the seed;
+- record `sessionInfo()`;
+- inspect sampler diagnostics;
+- use sufficient chains and iterations;
+- avoid recompiling unchanged models unnecessarily in teaching loops;
+- consider `cmdstanr` when appropriate and supported locally.
+
+# 19. Reporting checklist
+
+Report:
+
+- likelihood/family;
+- fixed and group-level structure;
+- prior distributions and rationale;
+- chain count, iterations, warmup if relevant;
+- sampler/backend;
+- R-hat and effective sample size;
+- posterior interval type;
+- posterior predictive checks;
+- LOO or other predictive assessment if used;
+- prior sensitivity for important conclusions.
+
+# 20. Exercises
+
+1. Propose an intercept prior for a crop height measured in centimeters and justify it physically.
+2. Create a skeptical prior for a treatment effect larger than 10 cm.
+3. Explain why a posterior predictive check can fail even if every R-hat is close to 1.
+4. Compare the interpretation of a 95% credible interval with a 95% confidence interval.
+
+# 21. Key take-home messages
+
+- Priors are part of the model and should be transparent.
+- Prior predictive checking should precede posterior fitting when priors matter.
+- Posterior intervals support direct probability statements under the fitted model.
+- Sampler convergence is a prerequisite for interpretation.
+- Posterior predictive checks evaluate whether the model can reproduce relevant data features.
+- Bayesian complexity should answer a scientific question, not serve as decoration.
+
+# 22. Next vignette
+
+Continue with `11-nonlinear-random-regression.Rmd` for logistic/Gompertz growth, dose response, generic nonlinear mixed models, and random regression.
+
+# References
+
+The `brms` framework and its multilevel Bayesian formulation are described by Buerkner [@burkner2017].

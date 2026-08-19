@@ -1,0 +1,10 @@
+name,file,description,simulated,seed,sha256
+splitplot,splitplot.csv,Balanced simulated split-plot: variety whole plots and quantitative nitrogen subplots.,True,260818,d558ba6b9df90b86fa8d135fd8241992b50993653fb06edff7a597df5b666404
+longitudinal,longitudinal.csv,"Simulated repeated plant-height measurements with treatment, random intercept/slope and serial dependence.",True,260818,a9ddab14d2fff082dafbf13f6daf13df4a80242395dbb399c9a058167cb41900
+counts,counts.csv,Simulated overdispersed and mildly zero-inflated pest counts.,True,260818,db1352c1b2b7d69dcc007ef37489f60c3c84a98ee710a0c830e5086de730109f
+binomial,binomial.csv,Simulated disease-incidence counts out of 20 plants per plot.,True,260818,13fab9728620fb26a86be7727f72e0b2aab03d263c129d6ef888f139d51fb4ad
+beta,beta.csv,"Simulated continuous disease-severity proportions in (0,1).",True,260818,ea217d600a50a65a88515ea06fc8438b169920a8cf7fd13623b2064323007374
+spatial,spatial.csv,Simulated row-column field trial with genotype effects and smooth spatial trend.,True,260818,883cd80c9c618606109a73f47ec9151c2a7ee7b7167fe728ec2f84b17d935f0f
+met,met.csv,Simulated genotype by environment trial with three replicates.,True,260818,d500af3379586210b62a7db5c3063b0a970355ec70538fb6c018997bc9121c4e
+growth,growth.csv,Simulated logistic biomass growth trajectories.,True,260818,4ce20218f0a91e4a06409990f48f4d300309edd8344c12799ebf8e4049060538
+dose_response,dose_response.csv,Simulated four-parameter logistic dose-response observations.,True,260818,6e568e1fbafcc3bd5dee15b6b29633b1b40ecc0243299af6b6178f79270e22a8

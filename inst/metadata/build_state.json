@@ -1,0 +1,10 @@
+{
+  "package": "mixedFlowR",
+  "version": "0.1.0.9000",
+  "blocks_implemented": 70,
+  "public_functions": 77,
+  "static_source_gate": "pass",
+  "runtime_R_validation": "pending",
+  "reason": "awaiting recorded tools/validate_local.R run",
+  "local_validation": "LOCAL_VALIDATION_WINDOWS.md"
+}

@@ -1,0 +1,415 @@
+---
+title: "Publication-Ready Tables, Figures, and Reports"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{Publication-Ready Tables, Figures, and Reports}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, error = FALSE,
+  collapse = TRUE, comment = "#>", fig.align = "center",
+  fig.width = 7, fig.height = 5, dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+A statistically correct model can still be communicated poorly. This vignette presents `mixedFlowR` as a communication layer that converts fitted model objects into tidy numerical tables, observed-data figures, model-based curves, residual plots, random-effect displays, covariance heat maps, spatial surfaces, bootstrap plots, and reproducible report skeletons.
+
+The central principle is that the **data-frame result remains authoritative**. Formatting does not change estimates.
+
+# 1. Learning objectives
+
+You will learn to:
+
+- create fixed-effect and variance-component tables;
+- render Markdown, LaTeX, HTML, and Word-ready tables;
+- create raw-data, residual, fixed-effect, random-effect, curve, covariance, bootstrap, and spatial plots;
+- show observed data together with estimates;
+- export 600 dpi raster and vector graphics;
+- distinguish estimates from uncertainty and raw data;
+- create a reproducible report skeleton.
+
+# 2. Fit a working model
+
+```{r data-model}
+library(mixedFlowR)
+z <- mixed_data("longitudinal")
+
+if (requireNamespace("lme4", quietly = TRUE)) {
+  fit <- mixed_fit(
+    height ~ treatment * time + (time | subject),
+    data = z
+  )
+}
+```
+
+# 3. Authoritative fixed-effect table
+
+```{r fixed-dataframe}
+if (exists("fit")) {
+  tab_fixed <- mixed_table(
+    fit,
+    component = "fixed",
+    format = "data.frame"
+  )
+
+  tab_fixed
+}
+```
+
+This data frame is the numerical source for downstream formatting.
+
+# 4. Markdown table
+
+```{r fixed-markdown}
+if (
+  exists("fit") &&
+  requireNamespace("knitr", quietly = TRUE)
+) {
+  mixed_table(
+    fit,
+    component = "fixed",
+    format = "markdown",
+    digits = 3,
+    caption = "Fixed-effect estimates"
+  )
+}
+```
+
+# 5. Random-effect variance table
+
+```{r random-table}
+if (
+  exists("fit") &&
+  requireNamespace("knitr", quietly = TRUE)
+) {
+  mixed_table(
+    fit,
+    component = "random",
+    format = "markdown",
+    digits = 3,
+    caption = "Random-effect variance components"
+  )
+}
+```
+
+# 6. ANOVA table
+
+```{r anova-table}
+if (
+  exists("fit") &&
+  requireNamespace("knitr", quietly = TRUE)
+) {
+  mixed_table(
+    fit,
+    component = "anova",
+    format = "markdown",
+    digits = 3,
+    caption = "Model ANOVA table"
+  )
+}
+```
+
+Always describe the denominator-DF and testing framework separately when relevant; a formatted table does not encode all inferential context.
+
+# 7. Estimated marginal means table
+
+```{r emm-table}
+if (
+  exists("fit") &&
+  requireNamespace("emmeans", quietly = TRUE) &&
+  requireNamespace("knitr", quietly = TRUE)
+) {
+  mixed_table(
+    fit,
+    component = "emmeans",
+    format = "markdown",
+    specs = ~ treatment,
+    caption = "Estimated marginal means by treatment"
+  )
+}
+```
+
+# 8. Word-ready flextable
+
+```{r flextable}
+if (
+  exists("fit") &&
+  requireNamespace("flextable", quietly = TRUE)
+) {
+  ft <- mixed_table(
+    fit,
+    component = "fixed",
+    format = "flextable",
+    digits = 3,
+    caption = "Fixed-effect estimates"
+  )
+
+  ft
+}
+```
+
+This object can be inserted into a Word-oriented reporting workflow.
+
+# 9. Raw-data plot
+
+```{r raw-plot}
+if (exists("fit")) {
+  mixed_plot(
+    fit,
+    type = "raw",
+    x = "time",
+    by = "treatment"
+  )
+}
+```
+
+Observed-data plots should appear early in an analysis because they reveal features that summary tables can hide.
+
+# 10. Residual diagnostic plot
+
+```{r residual-plot}
+if (exists("fit")) {
+  mixed_plot(fit, type = "residuals")
+}
+```
+
+The smoothed residual trend is a visual aid. It is not a formal goodness-of-fit test.
+
+# 11. Fixed-effect interval plot
+
+```{r fixed-plot}
+if (exists("fit")) {
+  mixed_plot(fit, type = "fixed")
+}
+```
+
+The current communication layer uses approximate 95% Wald intervals where standard errors are available. Label the interval method accurately in manuscripts.
+
+# 12. Random-effect plot
+
+```{r random-plot}
+if (exists("fit")) {
+  mixed_plot(fit, type = "random")
+}
+```
+
+A random-effect plot shows conditional deviations, not treatment means.
+
+# 13. Response curves with observed data
+
+```{r curve-plot}
+if (
+  exists("fit") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  mixed_plot(
+    fit,
+    type = "curve",
+    x = "time",
+    by = "treatment",
+    values = seq(min(z$time), max(z$time), by = 0.1),
+    show_data = TRUE
+  )
+}
+```
+
+**Figure principle:** show the observed data and uncertainty whenever possible. The model should not visually erase the data-generating evidence.
+
+# 14. Covariance heat map
+
+```{r covariance-plot}
+if (exists("fit")) {
+  mixed_plot(
+    fit,
+    type = "covariance",
+    group = "subject",
+    correlation = TRUE
+  )
+}
+```
+
+Caption this as the estimated **random-effect** correlation/covariance unless the plotted object specifically represents residual covariance.
+
+# 15. Bootstrap figure
+
+```{r bootstrap-object}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  fit_ri <- mixed_fit(height ~ treatment * time + (1 | subject), z)
+  boot_demo <- mixed_boot_fixed(fit_ri, B = 49, seed = 260818)
+}
+```
+
+```{r bootstrap-plot}
+if (exists("boot_demo")) {
+  mixed_plot(boot_demo, type = "bootstrap")
+}
+```
+
+# 16. Spatial figure
+
+```{r spatial-object}
+s <- mixed_data("spatial")
+
+if (requireNamespace("SpATS", quietly = TRUE)) {
+  sp <- mixed_spatial_field(
+    s,
+    "yield",
+    "genotype",
+    "col",
+    "row",
+    random = ~ block
+  )
+}
+```
+
+```{r spatial-plot}
+if (exists("sp")) {
+  mixed_plot(sp, type = "spatial")
+}
+```
+
+# 17. Export raster figures at 600 dpi
+
+```{r export-tiff, eval=FALSE}
+mixed_plot(
+  fit,
+  type = "residuals",
+  file = "residual_diagnostics.tiff",
+  width = 7,
+  height = 5,
+  dpi = 600
+)
+```
+
+TIFF is useful for journals that request high-resolution raster figures.
+
+# 18. Export vector figures
+
+```{r export-svg, eval=FALSE}
+mixed_plot(
+  fit,
+  type = "fixed",
+  file = "fixed_effects.svg",
+  width = 7,
+  height = 5
+)
+```
+
+```{r export-pdf, eval=FALSE}
+mixed_plot(
+  fit,
+  type = "curve",
+  x = "time",
+  by = "treatment",
+  values = seq(0, 5, by = 0.1),
+  file = "treatment_curves.pdf",
+  width = 7,
+  height = 5
+)
+```
+
+Vector formats preserve line and text quality during resizing.
+
+# 19. Why isolated bar charts are discouraged
+
+For continuous responses, a bar plus standard error hides:
+
+- distribution shape;
+- sample density;
+- outliers;
+- heteroscedasticity;
+- overlap among groups;
+- within-group variation.
+
+Prefer observed points, distributions, model curves, or interval plots.
+
+# 20. Figure captions should identify the estimand
+
+A good caption distinguishes among:
+
+- raw observations;
+- fitted conditional values;
+- population-level estimates;
+- EMMs;
+- confidence or credible intervals;
+- posterior predictive distribution;
+- spatial trend;
+- random effects.
+
+Do not call every model-derived line a "regression line" without explaining what it represents.
+
+# 21. Generate a report skeleton
+
+Use a temporary file for an evaluated demonstration.
+
+```{r report-temp}
+if (exists("fit")) {
+  tmp_report <- tempfile(fileext = ".md")
+  mixed_report(
+    fit,
+    file = tmp_report,
+    title = "Longitudinal mixed-model analysis"
+  )
+
+  readLines(tmp_report, n = 12)
+}
+```
+
+The report skeleton prompts the analyst to record design, model specification, diagnostics, uncertainty, figures, and reproducibility information.
+
+# 22. Suggested manuscript output package
+
+For a typical agronomic article, prepare:
+
+**Table 1:** design/sample summary.  
+**Table 2:** fixed effects or omnibus inference.  
+**Table 3:** EMMs, contrasts, or trends with uncertainty.  
+**Figure 1:** observed data plus model estimates.  
+**Figure 2:** diagnostic panel or scientifically meaningful random/spatial structure.  
+**Supplement:** variance components, alternative models, sensitivity analyses.
+
+# 23. Reporting checklist
+
+Before export, verify:
+
+- axis labels and units;
+- legend labels;
+- observed data displayed when appropriate;
+- uncertainty method identified;
+- no clipped text;
+- vector or 600 dpi raster resolution;
+- table digits appropriate to measurement precision;
+- caption defines estimand and model scale;
+- numerical table matches the fitted object.
+
+# 24. Exercises
+
+1. Create raw, fixed, random, and curve plots from the same model and explain how each answers a different question.
+2. Render the fixed-effect table as Markdown and `flextable` and verify that the numerical values agree.
+3. Export a curve as PDF and TIFF; compare intended use rather than visual content.
+4. Create a spatial surface and write a caption that does not confuse spatial trend with genotype performance.
+
+# 25. Key take-home messages
+
+- Formatting is a communication layer, not an inferential transformation.
+- Observed data and uncertainty should remain visible.
+- Figure captions must identify the estimand and interval type.
+- Use vector graphics or appropriate raster resolution for publication.
+- Keep an authoritative data-frame table behind every rendered table.
+
+# 26. Next vignette
+
+Continue with `16-teaching-tour.Rmd` to use the package as a structured teaching sequence from legacy split plots to advanced models.

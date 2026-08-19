@@ -1,0 +1,71 @@
+block,module,primary_function,status
+1,Design audit,mixed_design_audit,implemented
+2,Experimental hierarchy,mixed_hierarchy,implemented
+3,Balance and cell support,mixed_balance,implemented
+4,Pseudoreplication screen,mixed_pseudorep,implemented
+5,Legacy split-plot fit,fit_legacy_splitplot,implemented
+6,Expected mean squares,splitplot_ems,implemented
+7,Legacy ANOVA extraction,splitplot_anova,implemented
+8,Legacy-to-mixed comparison,compare_legacy_mixed,implemented
+9,Split-split plot,fit_legacy_splitsplit,implemented
+10,Strip-plot,fit_legacy_stripplot,implemented
+11,General mixed fit,mixed_fit,implemented
+12,Random intercepts,mixed_random_intercepts,implemented
+13,Random slopes,mixed_random_slopes,implemented
+14,Nested effects,mixed_nested,implemented
+15,Crossed effects,mixed_crossed,implemented
+16,BLUP extraction,mixed_blup,implemented
+17,General GLMM,mixed_glmm,implemented
+18,Binomial GLMM,mixed_binomial,implemented
+19,Count GLMM,mixed_count,implemented
+20,Beta mixed model,mixed_beta,implemented
+21,Zero-inflated mixed model,mixed_zero_inflated,implemented
+22,Covariance specification,mixed_covariance,implemented
+23,Residual heterogeneity,mixed_heterogeneity,implemented
+24,Discrete AR1,mixed_ar1,implemented
+25,Continuous AR1,mixed_car1,implemented
+26,Toeplitz/structured covariance,mixed_toeplitz,implemented
+27,Covariance-model comparison,mixed_covariance_compare,implemented
+28,Spatiotemporal mixed model,mixed_spatiotemporal,implemented
+29,Spatial covariance model,mixed_spatial_covariance,implemented
+30,Temporal prediction grid,mixed_temporal_grid,implemented
+31,Covariance visualization,mixed_covariance_plot,implemented
+32,Robust LMM,mixed_robust,implemented
+33,Robust influence screen,mixed_robust_influence,implemented
+34,Classical-robust comparison,mixed_compare_robust,implemented
+35,Contamination sensitivity,mixed_contamination,implemented
+36,Cluster-robust covariance,mixed_robust_vcov,implemented
+37,Bootstrap engine,mixed_boot,implemented
+38,Fixed-effect bootstrap,mixed_boot_fixed,implemented
+39,Variance-component bootstrap,mixed_boot_variance,implemented
+40,Prediction bootstrap,mixed_boot_predict,implemented
+41,Mixed GAMLSS,mixed_gamlss,implemented
+42,GAMLSS parameter extraction,mixed_gamlss_parameters,implemented
+43,GAMLSS comparison/selection,mixed_gamlss_select,implemented
+44,GAMLSS conditional quantiles,mixed_gamlss_quantiles,implemented
+45,GAMLSS diagnostics,mixed_gamlss_diagnose,implemented
+46,Bayesian multilevel fit,mixed_bayes,implemented
+47,Prior inspection,mixed_prior,implemented
+48,Prior predictive analysis,mixed_prior_predictive,implemented
+49,Posterior draws,mixed_posterior,implemented
+50,Posterior predictive checking,mixed_pp_check,implemented
+51,Bayesian predictive comparison,mixed_loo,implemented
+52,Estimated marginal means,mixed_emmeans,implemented
+53,Contrasts,mixed_contrasts,implemented
+54,Compact letter display,mixed_cld,implemented
+55,Quantitative trends,mixed_trend,implemented
+56,Prediction curves,mixed_curve,implemented
+57,Nonlinear mixed model,mixed_nonlinear,implemented
+58,Growth curves,mixed_growth,implemented
+59,Dose response,mixed_dose_response,implemented
+60,Random regression curves,mixed_random_curve,implemented
+61,Spatial field trials,mixed_spatial_field,implemented
+62,Spatial surface extraction,mixed_spatial_surface,implemented
+63,Multi-environment trials,mixed_met,implemented
+64,GxE/reduced-rank models,mixed_gxe,implemented
+65,Diagnostics,mixed_diagnose,implemented
+66,Influence,mixed_influence,implemented
+67,Model comparison,mixed_compare,implemented
+68,Publication tables,mixed_table,implemented
+69,Publication plots,mixed_plot,implemented
+70,Guided teaching tour,mixed_tour,implemented

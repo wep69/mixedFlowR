@@ -1,0 +1,99 @@
+url: ~
+template:
+  bootstrap: 5
+
+# Navegacao das vinhetas conforme mixedFlowR_VIGNETTES_BLOCK_ORGANIZATION_UPDATED.md:
+# Start Here (visao geral) primeiro, depois os cinco blocos progressivos.
+articles:
+  - title: "Start Here: complete workflow overview"
+    desc: >
+      The orientation map of the package: the full analytical flow, how the modules
+      connect, and where each step is executed.
+    contents:
+      - v00-start-here-overview
+
+  - title: "Block 1: foundations and core mixed models"
+    desc: >
+      The package, experimental-unit logic, legacy split-plot analysis, random
+      effects, shrinkage, and the transition from LMM to GLMM.
+    contents:
+      - v01-quick-start
+      - v02-design-legacy-splitplot
+      - v03-random-effects-and-shrinkage
+      - v04-glmm-distributions
+
+  - title: "Block 2: dependence, quantitative effects, diagnostics and robustness"
+    desc: >
+      Residual covariance and heteroscedasticity, qualitative versus quantitative
+      factors, diagnostics, model comparison, influence, and robust sensitivity.
+    contents:
+      - v05-residual-covariance
+      - v10-qualitative-quantitative
+      - v14-diagnostics-comparison
+      - v06-robust-sensitivity
+
+  - title: "Block 3: advanced inference and distributional modelling"
+    desc: >
+      Bootstrap inference, mixed GAMLSS, Bayesian multilevel models, nonlinear
+      mixed models, growth curves, dose response, and random regression.
+    contents:
+      - v07-bootstrap-inference
+      - v08-gamlss-mixed
+      - v09-bayesian-multilevel
+      - v11-nonlinear-random-regression
+
+  - title: "Block 4: spatial, MET, publication and teaching"
+    desc: >
+      Spatial field trials, multi-environment trials and GxE, publication-ready
+      tables and figures, and guided teaching workflows.
+    contents:
+      - v12-spatial-field-trials
+      - v13-met-gxe
+      - v15-publication-output
+      - v16-teaching-tour
+
+  - title: "Block 5: state of the art, validation and complete workflows"
+    desc: >
+      The package within the mixed-model ecosystem, validation and reproducibility,
+      the integrated agronomic workflow, and the API-wide example catalogue.
+    contents:
+      - v17-state-of-the-art
+      - v18-validation-reproducibility
+      - v19-complete-agronomic-workflow
+      - v20-api-example-catalog
+
+reference:
+  - title: "Design before modelling"
+    contents: [mixed_design_audit, mixed_hierarchy, mixed_balance, mixed_pseudorep]
+  - title: "Legacy experimental strata"
+    contents: [fit_legacy_splitplot, splitplot_ems, splitplot_anova, compare_legacy_mixed,
+               fit_legacy_splitsplit, fit_legacy_stripplot]
+  - title: "Gaussian mixed-model core"
+    contents: [mixed_fit, mixed_random_intercepts, mixed_random_slopes, mixed_nested,
+               mixed_crossed, mixed_blup]
+  - title: "GLMM response families"
+    contents: [mixed_glmm, mixed_binomial, mixed_count, mixed_beta, mixed_zero_inflated]
+  - title: "Covariance and dependence"
+    contents: [mixed_covariance, mixed_heterogeneity, mixed_ar1, mixed_car1, mixed_toeplitz,
+               mixed_covariance_compare, mixed_spatiotemporal, mixed_spatial_covariance,
+               mixed_temporal_grid, mixed_covariance_plot]
+  - title: "Robustness and resampling"
+    contents: [mixed_robust, mixed_robust_influence, mixed_compare_robust, mixed_contamination,
+               mixed_robust_vcov, mixed_boot, mixed_boot_fixed, mixed_boot_variance,
+               mixed_boot_predict]
+  - title: "Distributional and Bayesian"
+    contents: [mixed_gamlss, mixed_gamlss_parameters, mixed_gamlss_select, mixed_gamlss_quantiles,
+               mixed_gamlss_diagnose, mixed_bayes, mixed_prior, mixed_prior_predictive,
+               mixed_posterior, mixed_pp_check, mixed_loo]
+  - title: "Estimands, trends and curves"
+    contents: [mixed_emmeans, mixed_contrasts, mixed_cld, mixed_trend, mixed_curve,
+               mixed_quantitative, mixed_optimum, mixed_anova]
+  - title: "Nonlinear response"
+    contents: [mixed_nonlinear, mixed_growth, mixed_dose_response, mixed_random_curve]
+  - title: "Field trials and multi-environment"
+    contents: [mixed_spatial_field, mixed_spatial_surface, mixed_met, mixed_gxe]
+  - title: "Diagnostics, comparison and communication"
+    contents: [mixed_diagnose, mixed_influence, mixed_compare, mixed_table, mixed_plot,
+               mixed_report]
+  - title: "Package map and teaching"
+    contents: [mixed_capabilities, mixed_blocks, mixed_tour, mixed_data]

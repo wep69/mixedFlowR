@@ -1,0 +1,358 @@
+---
+title: "Teaching Mixed Models with mixedFlowR Tours"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{Teaching Mixed Models with mixedFlowR Tours}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, error = FALSE,
+  collapse = TRUE, comment = "#>", fig.align = "center",
+  fig.width = 7, fig.height = 5, dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+`mixedFlowR` was designed not only as an analysis interface but also as a teaching scaffold. The `mixed_tour()` function exposes conceptual sequences that can be used in lectures, workshops, laboratory exercises, self-study, and graduate methods courses.
+
+This vignette turns those tours into a ten-session instructional pathway.
+
+# 1. Learning objectives
+
+After completing this vignette, an instructor or self-learner should be able to:
+
+- use `mixed_tour()` to retrieve teaching sequences;
+- organize topics from design to advanced mixed models;
+- separate conceptual learning from computational complexity;
+- build classroom exercises around frozen teaching datasets;
+- integrate figures, tables, diagnostics, and interpretation;
+- use the same dataset to show progressive model refinement.
+
+# 2. Available tours
+
+```{r tours}
+library(mixedFlowR)
+
+topics <- c(
+  "splitplot",
+  "random_effects",
+  "covariance",
+  "robust",
+  "gamlss",
+  "bayes",
+  "spatial",
+  "met"
+)
+
+lapply(topics, mixed_tour)
+```
+
+# 3. Split-plot tour
+
+```{r splitplot-tour}
+tour_split <- mixed_tour("splitplot")
+tour_split$steps
+```
+
+Run the lightweight artifact.
+
+```{r splitplot-run}
+tour_split_run <- mixed_tour("splitplot", run = TRUE)
+tour_split_run$artifact
+```
+
+The sequence moves from experimental units to error strata and then to a mixed representation.
+
+## Classroom prompt
+
+Ask students to identify which error term would be wrong if every subplot were treated as an independent variety replicate.
+
+# 4. Random-effects tour
+
+```{r random-tour}
+mixed_tour("random_effects")$steps
+```
+
+Suggested demonstration:
+
+```{r random-demo}
+z <- mixed_data("longitudinal")
+
+if (requireNamespace("lme4", quietly = TRUE)) {
+  ri <- mixed_random_intercepts(z, "height", "treatment*time", "subject")
+  rs <- mixed_random_slopes(z, "height", "treatment*time", "time", "subject")
+
+  mixed_plot(rs, type = "random")
+}
+```
+
+## Classroom prompt
+
+What changes when a random slope is added? Which parameter represents subject-to-subject heterogeneity in growth rate?
+
+# 5. Covariance tour
+
+```{r covariance-tour}
+mixed_tour("covariance")$steps
+```
+
+Demonstrate AR(1) and heterogeneity.
+
+```{r covariance-demo}
+if (requireNamespace("nlme", quietly = TRUE)) {
+  ar1 <- mixed_ar1(z, "height", "treatment*time", "time", "subject")
+  het <- mixed_heterogeneity(
+    height ~ treatment * time,
+    z,
+    random = ~ 1 | subject,
+    variance_group = "treatment"
+  )
+}
+```
+
+## Classroom prompt
+
+Explain why random intercept covariance and residual AR(1) covariance are not the same source of dependence.
+
+# 6. Robust tour
+
+```{r robust-tour}
+mixed_tour("robust")$steps
+```
+
+Create a teaching contamination scenario.
+
+```{r robust-demo}
+z_cont <- z
+z_cont$height[1] <- z_cont$height[1] + 30
+
+if (
+  requireNamespace("lme4", quietly = TRUE) &&
+  requireNamespace("robustlmm", quietly = TRUE)
+) {
+  classical <- mixed_fit(height ~ treatment*time + (1|subject), z_cont)
+  robust <- mixed_robust(height ~ treatment*time + (1|subject), z_cont)
+  mixed_compare_robust(classical, robust)
+}
+```
+
+## Classroom prompt
+
+A large classical-versus-robust shift is observed. Is deleting the flagged observation justified? What information is needed before exclusion?
+
+# 7. GAMLSS tour
+
+```{r gamlss-tour}
+mixed_tour("gamlss")$steps
+```
+
+```{r gamlss-demo}
+if (requireNamespace("gamlss", quietly = TRUE)) {
+  g_scale <- mixed_gamlss(
+    height ~ treatment*time,
+    z,
+    family = "NO",
+    sigma.formula = ~ treatment,
+    random = "subject"
+  )
+
+  head(mixed_gamlss_parameters(g_scale, c("mu", "sigma")))
+}
+```
+
+## Classroom prompt
+
+What biological question is asked by putting treatment in `sigma.formula`? How is it different from asking whether treatment changes mean height?
+
+# 8. Bayesian tour
+
+```{r bayes-tour}
+mixed_tour("bayes")$steps
+```
+
+Prior inspection can be shown without sampling.
+
+```{r bayes-prior}
+if (requireNamespace("brms", quietly = TRUE)) {
+  mixed_prior(
+    height ~ treatment*time + (time|subject),
+    data = z
+  )
+}
+```
+
+Full posterior fitting should be demonstrated in a prepared environment rather than forced during every package check.
+
+```{r bayes-full, eval=FALSE}
+bfit <- mixed_bayes(
+  height ~ treatment*time + (time|subject),
+  z,
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  seed = 260818
+)
+
+mixed_pp_check(bfit)
+```
+
+## Classroom prompt
+
+What does a posterior predictive check assess that R-hat does not?
+
+# 9. Spatial tour
+
+```{r spatial-tour}
+mixed_tour("spatial")$steps
+```
+
+```{r spatial-demo}
+s <- mixed_data("spatial")
+
+if (requireNamespace("SpATS", quietly = TRUE)) {
+  sp <- mixed_spatial_field(s, "yield", "genotype", "col", "row", random = ~ block)
+  mixed_plot(sp, type = "spatial")
+}
+```
+
+## Classroom prompt
+
+Which pattern in the spatial surface could reflect soil heterogeneity? Why must treatment layout be inspected before attributing the pattern to field trend?
+
+# 10. MET tour
+
+```{r met-tour}
+mixed_tour("met")$steps
+```
+
+```{r met-demo}
+m <- mixed_data("met")
+
+if (requireNamespace("sommer", quietly = TRUE)) {
+  gxe <- mixed_gxe(m, "yield", "genotype", "environment", "fa", nPC = 2)
+}
+```
+
+## Classroom prompt
+
+Why should an FA factor not automatically be named "rainfall" or "temperature"?
+
+# 11. A ten-session course design
+
+| Session | Core question | Main functions |
+|---|---|---|
+| 1 | What is the experimental unit? | `mixed_design_audit()`, `mixed_hierarchy()` |
+| 2 | Why does split-plot have two errors? | `fit_legacy_splitplot()`, `splitplot_ems()` |
+| 3 | What is partial pooling? | `mixed_random_intercepts()`, `mixed_blup()` |
+| 4 | Why random slopes? | `mixed_random_slopes()`, `mixed_covariance_plot()` |
+| 5 | How do non-Gaussian responses change the model? | `mixed_count()`, `mixed_binomial()`, `mixed_beta()` |
+| 6 | Where does repeated-measure correlation enter? | `mixed_ar1()`, `mixed_heterogeneity()` |
+| 7 | How should dose be interpreted? | `mixed_trend()`, `mixed_curve()`, `mixed_optimum()` |
+| 8 | How sensitive are conclusions? | `mixed_robust()`, `mixed_boot()` |
+| 9 | Why model distributions/spatial/MET structure? | `mixed_gamlss()`, `mixed_spatial_field()`, `mixed_gxe()` |
+| 10 | How do we communicate and reproduce the analysis? | `mixed_plot()`, `mixed_table()`, `mixed_report()` |
+
+# 12. Three-level teaching pattern
+
+For every major function, use three examples.
+
+**Level 1: minimal syntax**  
+Show what the function does.
+
+**Level 2: realistic agronomic problem**  
+Connect design, data, and interpretation.
+
+**Level 3: problematic or discrepant scenario**  
+Show what can go wrong, such as missing cells, singularity, contamination, overdispersion, boundary values, or spatial confounding.
+
+This pattern is consistent with the public API example catalog.
+
+# 13. Figures as teaching objects
+
+Do not show a figure only as decoration. Ask students to identify:
+
+- observed versus fitted information;
+- uncertainty;
+- grouping structure;
+- residual pattern;
+- extrapolation;
+- scale and units.
+
+# 14. Tables as teaching objects
+
+A table exercise should ask:
+
+- What is the estimand?
+- What does the standard error represent?
+- Which random component is associated with which experimental unit?
+- What adjustment was used for multiple comparisons?
+- Is the estimate on the link scale or response scale?
+
+# 15. Suggested practical assessment
+
+Give students one frozen dataset and require:
+
+1. design audit;
+2. raw-data plot;
+3. justified model specification;
+4. diagnostics;
+5. one alternative/sensitivity analysis;
+6. one publication-ready figure;
+7. one publication-ready table;
+8. a 200-word interpretation;
+9. reproducibility information.
+
+Grade the reasoning, not only whether the software runs.
+
+# 16. Teaching Bayesian and heavy modules responsibly
+
+For computationally expensive modules:
+
+- run prevalidated examples in class;
+- provide the full code;
+- use `eval=FALSE` in routine package vignette builds;
+- give students smaller syntax-check configurations;
+- separate computational convenience from final analysis settings.
+
+# 17. Self-study checklist
+
+A learner is ready to advance when they can explain:
+
+- the experimental unit without looking at the formula;
+- why a random effect was included;
+- why a response family was selected;
+- why a covariance structure is plausible;
+- what a diagnostic failure means;
+- what an EMM, trend, BLUP, and posterior draw represent;
+- what uncertainty measure is shown in a figure.
+
+# 18. Exercises
+
+1. Use `mixed_tour()` to write a five-slide lesson outline for random effects.
+2. Create a contamination scenario and ask a peer to decide whether exclusion is justified.
+3. Compare a qualitative treatment analysis with a quantitative dose analysis of the same data.
+4. Build a one-page practical report containing one figure, one table, and four interpretive bullets.
+
+# 19. Key take-home messages
+
+- Teaching should preserve the connection between experimental design and model structure.
+- The same dataset can illustrate progressive model refinement.
+- Heavy computation should not force all vignettes to `eval=FALSE`.
+- Interpretation exercises are as important as code exercises.
+- A good mixed-model course teaches what **not** to model as well as what can be modeled.
+
+# 20. What comes next
+
+Stage 5 closes the tutorial sequence with the state of the art, reproducibility/validation, a complete agronomic workflow, and the full API example catalog.

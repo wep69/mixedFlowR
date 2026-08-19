@@ -1,0 +1,429 @@
+---
+title: "GLMM Distributions: Counts, Incidence, Proportions, and Zero Inflation"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{GLMM Distributions: Counts, Incidence, Proportions, and Zero Inflation}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  eval = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  error = FALSE,
+  collapse = TRUE,
+  comment = "#>",
+  fig.align = "center",
+  fig.width = 7,
+  fig.height = 5,
+  dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+This vignette extends the mixed-model framework to non-Gaussian responses. The focus is not on memorizing distributions. The objective is to connect the measurement process to an appropriate conditional distribution, link function, random structure, and diagnostic workflow.
+
+`mixedFlowR` uses `lme4` and `glmmTMB` as principal GLMM engines, with `glmmTMB` providing especially broad support for negative-binomial, beta, zero-inflated, and dispersion models [@brooks2017].
+
+# 1. Learning objectives
+
+You will learn to:
+
+- distinguish binary/binomial, count, and continuous-proportion outcomes;
+- understand the role of the link function;
+- fit binomial, Poisson, negative-binomial, beta, and zero-inflated mixed models;
+- recognize overdispersion and excess-zero questions;
+- use simulation-based residual diagnostics when `DHARMa` is available;
+- compare candidate models without automatic model selection;
+- report effects on both link and response scales when useful.
+
+# 2. A practical family map
+
+| Response | Typical family | Link | Common complication |
+|---|---|---|---|
+| successes out of trials | binomial | logit | overdispersion / grouping |
+| insect count | Poisson | log | overdispersion |
+| overdispersed count | negative binomial | log | zero inflation |
+| proportion strictly in `(0,1)` | beta | logit | boundary values |
+| structural + sampling zeros | zero-inflated family | family-specific | distinguish zero mechanisms |
+
+The distribution should be motivated by the response scale and data-generating process, not by which model gives the smallest AIC.
+
+# 3. Binomial incidence example
+
+Load the disease-incidence teaching data.
+
+```{r binomial-data}
+library(mixedFlowR)
+b <- mixed_data("binomial")
+head(b)
+```
+
+Observed treatment totals:
+
+```{r binomial-summary}
+aggregate(cbind(diseased, healthy, total) ~ treatment, data = b, FUN = sum)
+```
+
+Observed incidence:
+
+```{r incidence}
+inc_obs <- aggregate(cbind(diseased, total) ~ treatment, data = b, FUN = sum)
+inc_obs$incidence <- inc_obs$diseased / inc_obs$total
+inc_obs
+```
+
+Fit a grouped binomial GLMM.
+
+```{r binomial-fit}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  bin_fit <- mixed_binomial(
+    data      = b,
+    successes = "diseased",
+    failures  = "healthy",
+    fixed     = "treatment",
+    group     = "block",
+    engine    = "lme4"
+  )
+
+  bin_fit
+}
+```
+
+Obtain model-based means on the response scale.
+
+```{r binomial-emmeans}
+if (
+  exists("bin_fit") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  mixed_emmeans(
+    bin_fit,
+    specs = ~ treatment,
+    type = "response"
+  )
+}
+```
+
+**Interpretation.** On the response scale, estimates are probabilities rather than logits. Report both the modeled treatment contrast and a response-scale effect that readers can interpret biologically.
+
+# 4. Count data: Poisson as a starting model
+
+```{r count-data}
+cnt <- mixed_data("counts")
+head(cnt)
+```
+
+Observed mean and zero fraction:
+
+```{r count-summary}
+aggregate(count ~ treatment, data = cnt, FUN = mean)
+aggregate(I(count == 0) ~ treatment, data = cnt, FUN = mean)
+```
+
+Fit a Poisson GLMM.
+
+```{r poisson-fit}
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  pois <- mixed_count(
+    count ~ treatment * time + (1 | plot),
+    data   = cnt,
+    family = "poisson",
+    engine = "glmmTMB"
+  )
+
+  pois
+}
+```
+
+The Poisson assumption equates conditional mean and conditional variance. Biological count data often violate this restriction.
+
+# 5. Negative-binomial alternatives
+
+Fit NB2.
+
+```{r nb2-fit}
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  nb2 <- mixed_count(
+    count ~ treatment * time + (1 | plot),
+    data   = cnt,
+    family = "nbinom2"
+  )
+}
+```
+
+Fit NB1.
+
+```{r nb1-fit}
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  nb1 <- mixed_count(
+    count ~ treatment * time + (1 | plot),
+    data   = cnt,
+    family = "nbinom1"
+  )
+}
+```
+
+The parameterizations differ in how variance increases with the conditional mean. Use diagnostics and subject-matter knowledge rather than assuming one is universally preferable.
+
+# 6. Simulation-based diagnostics with DHARMa
+
+```{r dharma-nb2}
+if (
+  exists("nb2") &&
+  requireNamespace("DHARMa", quietly = TRUE)
+) {
+  nb_diag <- mixed_diagnose(
+    nb2,
+    simulate = TRUE,
+    nsim = 500
+  )
+
+  nb_diag
+}
+```
+
+Simulation-based residuals are particularly valuable for discrete outcomes because raw residual patterns are often difficult to interpret directly.
+
+Look for:
+
+- systematic residual trends;
+- over- or underdispersion;
+- excess zeros;
+- remaining temporal or spatial autocorrelation;
+- influential clusters.
+
+# 7. Zero inflation is a process hypothesis
+
+Fit a zero-inflated negative-binomial model.
+
+```{r zi-fit}
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  zi <- mixed_zero_inflated(
+    count ~ treatment * time + (1 | plot),
+    data        = cnt,
+    family      = glmmTMB::nbinom2,
+    ziformula   = ~ treatment,
+    dispformula = ~ 1
+  )
+
+  zi
+}
+```
+
+**Important interpretation.** A zero-inflated model assumes an additional mechanism capable of producing zeros beyond the conditional count distribution. The mere presence of many zeros does not prove that such a process exists.
+
+# 8. Compare count candidates
+
+Information criteria can summarize relative penalized likelihood.
+
+```{r count-compare}
+if (exists("pois") && exists("nb1") && exists("nb2")) {
+  mixed_compare(
+    Poisson = pois,
+    NB1     = nb1,
+    NB2     = nb2,
+    method  = "information"
+  )
+}
+```
+
+If `zi` is available:
+
+```{r zi-compare}
+if (exists("nb2") && exists("zi")) {
+  mixed_compare(
+    NB2 = nb2,
+    ZINB = zi,
+    method = "information"
+  )
+}
+```
+
+Do not turn this table into an automatic winner selector. Ask whether the more complex model solves a diagnosed problem and represents a plausible process.
+
+# 9. Beta mixed model for continuous proportions
+
+```{r beta-data}
+be <- mixed_data("beta")
+summary(be$severity)
+range(be$severity)
+```
+
+The teaching data lie strictly between zero and one, so a beta response is admissible.
+
+```{r beta-fit}
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  beta_fit <- mixed_beta(
+    severity ~ treatment + (1 | block),
+    data = be,
+    link = "logit"
+  )
+
+  beta_fit
+}
+```
+
+Response-scale marginal means:
+
+```{r beta-emm}
+if (
+  exists("beta_fit") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  mixed_emmeans(
+    beta_fit,
+    specs = ~ treatment,
+    type = "response"
+  )
+}
+```
+
+# 10. Boundary values: a deliberate failure
+
+A standard beta distribution has support in the open interval `(0,1)`.
+
+```{r beta-boundary, eval=FALSE}
+be_bad <- be
+be_bad$severity[1] <- 0
+mixed_beta(severity ~ treatment + (1 | block), be_bad)
+```
+
+This example is not evaluated because it is intended to demonstrate an error. Do not silently add a small constant to every observation without a documented modeling rationale.
+
+# 11. General GLMM wrapper
+
+The lower-level wrapper is useful when a family is directly supported by the selected engine.
+
+```{r generic-glmm}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  generic_bin <- mixed_glmm(
+    cbind(diseased, healthy) ~ treatment + (1 | block),
+    data   = b,
+    family = stats::binomial(),
+    engine = "lme4"
+  )
+}
+```
+
+# 12. Link-scale versus response-scale interpretation
+
+With a log link, additive effects on the linear predictor become multiplicative effects on the mean response.
+
+With a logit link, additive effects are on log-odds. A response-scale probability or risk difference may be easier to communicate.
+
+The reporting workflow should therefore distinguish:
+
+- coefficient scale;
+- transformed response scale;
+- contrast scale;
+- absolute versus relative effect.
+
+# 13. Plot observed data and fitted structure
+
+For counts, a raw-data panel can reveal discreteness and zero structure.
+
+```{r count-raw-plot}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  ggplot2::ggplot(cnt, ggplot2::aes(time, count, colour = treatment)) +
+    ggplot2::geom_jitter(width = 0.08, height = 0, alpha = 0.55) +
+    ggplot2::stat_summary(fun = mean, geom = "line", ggplot2::aes(group = treatment), linewidth = 0.8) +
+    ggplot2::labs(
+      x = "Time",
+      y = "Pest count",
+      colour = "Treatment",
+      title = "Observed count trajectories"
+    ) +
+    ggplot2::theme_minimal(base_size = 11)
+}
+```
+
+**How to read the figure.** The plotted treatment means are descriptive. The mixed model additionally accounts for repeated plot structure, conditional distribution, and any modeled zero or dispersion process.
+
+# 14. A practical model-building sequence for counts
+
+A defensible sequence is:
+
+1. specify the fixed and random structure from the design;
+2. fit a Poisson baseline if scientifically reasonable;
+3. inspect dispersion and residual diagnostics;
+4. move to a negative-binomial family if overdispersion is material;
+5. evaluate zero inflation only if diagnostics and biology support a second zero mechanism;
+6. add residual temporal/spatial structure if dependence remains;
+7. compare conclusions across reasonable candidates.
+
+# 15. Reporting checklist for GLMMs
+
+Report:
+
+- response definition and denominator when relevant;
+- distribution family;
+- link function;
+- random effects;
+- zero-inflation formula, if fitted;
+- dispersion formula, if fitted;
+- diagnostics;
+- effect scale used in interpretation;
+- estimates with confidence intervals;
+- multiplicity adjustment for multiple contrasts.
+
+# 16. Practice exercises
+
+## Exercise 1: Poisson versus NB2
+
+Fit both models and inspect `mixed_diagnose(..., simulate=TRUE)` if `DHARMa` is available. Does the more flexible family solve a visible residual problem?
+
+## Exercise 2: zero-inflation formula
+
+Compare `ziformula = ~ 1` with `ziformula = ~ treatment`. Explain the scientific claim implied by allowing the structural-zero probability to vary among treatments.
+
+```{r exercise-zi}
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  zi_intercept <- mixed_zero_inflated(
+    count ~ treatment * time + (1 | plot),
+    data = cnt,
+    family = glmmTMB::nbinom2,
+    ziformula = ~ 1
+  )
+}
+```
+
+## Exercise 3: beta link
+
+Fit beta models with logit and probit links. Compare fitted conclusions on the response scale rather than coefficient magnitude alone.
+
+```{r exercise-beta}
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  beta_logit <- mixed_beta(severity ~ treatment + (1 | block), be, "logit")
+  beta_probit <- mixed_beta(severity ~ treatment + (1 | block), be, "probit")
+}
+```
+
+# 17. Key take-home messages
+
+- Distribution choice starts from the response-generating process.
+- Random effects account for grouping but do not automatically solve overdispersion or residual dependence.
+- Negative-binomial and zero-inflated models answer different questions.
+- Beta models require support strictly inside `(0,1)` unless a boundary-capable alternative is used.
+- Simulation-based diagnostics are highly useful for GLMMs.
+- A lower information criterion alone is not a scientific argument for complexity.
+
+# 18. What comes next
+
+The next stage begins with `05-residual-covariance.Rmd`, where we separate group-level random effects from residual temporal correlation and heteroscedasticity.
+
+# References
+
+`lme4` provides a foundational implementation of linear and generalized linear mixed models [@bates2015]. `glmmTMB` extends this framework with flexible families, zero-inflation, and related model components [@brooks2017].

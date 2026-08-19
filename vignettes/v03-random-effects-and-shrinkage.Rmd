@@ -1,0 +1,429 @@
+---
+title: "Random Effects, Shrinkage, Nesting, and Crossing"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{Random Effects, Shrinkage, Nesting, and Crossing}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  eval = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  error = FALSE,
+  collapse = TRUE,
+  comment = "#>",
+  fig.align = "center",
+  fig.width = 7,
+  fig.height = 5,
+  dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+This vignette develops the core language of Gaussian mixed models: random intercepts, random slopes, nested and crossed grouping factors, variance components, BLUPs/conditional modes, shrinkage, and singular fits.
+
+# 1. Learning objectives
+
+You will learn to:
+
+- translate experimental or sampling hierarchy into random-effect terms;
+- distinguish a random intercept from a random slope;
+- distinguish nested from crossed grouping factors;
+- extract and visualize group-level effects;
+- understand partial pooling and shrinkage;
+- inspect random-effect covariance;
+- recognize overparameterized or singular random structures;
+- compare random structures without ignoring the design.
+
+# 2. The longitudinal teaching dataset
+
+```{r data}
+library(mixedFlowR)
+z <- mixed_data("longitudinal")
+head(z)
+```
+
+Each `subject` is measured repeatedly over `time`, with treatment assigned at the subject level.
+
+```{r structure}
+with(z, table(treatment, time))
+length(unique(z$subject))
+```
+
+Plot individual trajectories.
+
+```{r raw-trajectories}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  ggplot2::ggplot(
+    z,
+    ggplot2::aes(time, height, group = subject, colour = treatment)
+  ) +
+    ggplot2::geom_line(alpha = 0.35) +
+    ggplot2::geom_point(alpha = 0.45, size = 1.2) +
+    ggplot2::labs(
+      x = "Time",
+      y = "Height",
+      colour = "Treatment",
+      title = "Repeated subject trajectories"
+    ) +
+    ggplot2::theme_minimal(base_size = 11)
+}
+```
+
+**How to read the figure.** Between-subject vertical displacement suggests random intercept variation. Differences in trajectory steepness suggest possible random-slope variation.
+
+# 3. Random intercept model
+
+A random intercept allows each subject to have its own baseline deviation around the population mean structure.
+
+```{r random-intercept}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  ri <- mixed_random_intercepts(
+    data     = z,
+    response = "height",
+    fixed    = "treatment * time",
+    group    = "subject"
+  )
+
+  ri
+}
+```
+
+Equivalent core syntax:
+
+```{r random-intercept-core}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  ri_core <- mixed_fit(
+    height ~ treatment * time + (1 | subject),
+    data = z
+  )
+}
+```
+
+# 4. Random slope model
+
+A random slope lets subjects differ in their rate of change over time.
+
+```{r random-slope}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  rs <- mixed_random_slopes(
+    data       = z,
+    response   = "height",
+    fixed      = "treatment * time",
+    slope      = "time",
+    group      = "subject",
+    correlated = TRUE
+  )
+
+  rs
+}
+```
+
+An uncorrelated intercept-slope specification can be requested.
+
+```{r random-slope-diagonal}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  rs_diag <- mixed_random_slopes(
+    data       = z,
+    response   = "height",
+    fixed      = "treatment * time",
+    slope      = "time",
+    group      = "subject",
+    correlated = FALSE
+  )
+}
+```
+
+# 5. What the random-effect covariance means
+
+For a correlated random-intercept/random-slope model, each subject has a pair of deviations:
+
+- baseline deviation;
+- slope deviation.
+
+The estimated correlation asks whether subjects starting higher also tend to grow faster or slower.
+
+```{r covariance-plot}
+if (exists("rs")) {
+  mixed_covariance_plot(
+    rs,
+    group = "subject",
+    correlation = TRUE
+  )
+}
+```
+
+A correlation near +1 or -1 should be interpreted together with variance estimates and singularity diagnostics. It can signal insufficient information for the requested covariance structure.
+
+# 6. Extract BLUPs / conditional modes
+
+```{r blups}
+if (exists("rs")) {
+  blup <- mixed_blup(rs, group = "subject")
+  head(blup)
+}
+```
+
+Visualize group-level effects.
+
+```{r random-plot}
+if (exists("rs")) {
+  mixed_plot(rs, type = "random")
+}
+```
+
+# 7. Shrinkage and partial pooling
+
+Suppose subject `i` has a noisy raw mean. A fixed-subject analysis would estimate it almost independently. A mixed model assumes subjects come from a population distribution and estimates a conditional deviation that balances:
+
+1. the subject's own data;
+2. the estimated population mean trajectory;
+3. the estimated between-subject variance;
+4. residual uncertainty.
+
+This is **partial pooling**.
+
+## Why shrinkage is useful
+
+- groups with little information are stabilized more strongly;
+- well-informed groups remain closer to their observed trajectory;
+- extreme group estimates are not automatically treated as errors;
+- prediction for new or partially observed groups becomes coherent.
+
+Shrinkage is not arbitrary regularization added after fitting. It follows from the hierarchical model.
+
+# 8. A small empirical shrinkage illustration
+
+Compute raw subject means.
+
+```{r raw-subject-means}
+raw_subject <- aggregate(height ~ subject, data = z, FUN = mean)
+head(raw_subject)
+```
+
+Extract random intercepts from the LMM when available.
+
+```{r random-effects-table}
+if (exists("ri")) {
+  re_subject <- mixed_blup(ri, group = "subject")
+  head(re_subject)
+}
+```
+
+Do not directly compare a raw subject mean with a random intercept as if they were the same estimand. The raw mean includes the fixed effects of treatment and time, while the conditional random intercept is a deviation around the fitted fixed-effect model.
+
+# 9. Nested effects
+
+In agronomic experiments, subsamples may be nested within plots, plots within blocks, or repeated plants within plots.
+
+For the split-plot dataset:
+
+```{r nested-data}
+d <- mixed_data("splitplot")
+d$whole_plot <- interaction(d$block, d$variety, drop = TRUE)
+```
+
+```{r nested-model}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  nested <- mixed_nested(
+    data     = d,
+    response = "yield",
+    fixed    = "variety * nitrogen",
+    groups   = c("block", "whole_plot")
+  )
+
+  nested
+}
+```
+
+Nesting means that the lower-level group identifier belongs to one higher-level group in the design.
+
+# 10. Crossed effects
+
+Crossing means that levels of two grouping factors can occur in combination rather than one factor being contained within the other.
+
+A simple example uses the multi-environment dataset, where genotypes are observed in multiple environments.
+
+```{r crossed-data}
+met <- mixed_data("met")
+```
+
+```{r crossed-model}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  crossed <- mixed_crossed(
+    data     = met,
+    response = "yield",
+    fixed    = "1",
+    groups   = c("genotype", "environment")
+  )
+
+  crossed
+}
+```
+
+This baseline crossed model is not a full GxE analysis. It is an instructional representation of crossed grouping factors. Dedicated MET covariance models appear later.
+
+# 11. Diagnose the random structure
+
+```{r diagnose-rs}
+if (exists("rs")) {
+  mixed_diagnose(rs)
+}
+```
+
+Check especially:
+
+- singular fit warning;
+- random-effect variances close to zero;
+- extreme random-effect correlation;
+- convergence messages;
+- residual trends that suggest missing fixed or covariance structure.
+
+# 12. Compare intercept-only and random-slope models carefully
+
+If both models have the same fixed effects, an information-criterion comparison can be descriptive.
+
+```{r compare-random}
+if (exists("ri") && exists("rs")) {
+  mixed_compare(
+    random_intercept = ri,
+    random_slope     = rs,
+    method = "information"
+  )
+}
+```
+
+Do not add a random slope merely because it decreases AIC by a small amount. Ask whether trajectories truly vary by subject and whether the design supplies repeated observations across the relevant covariate range.
+
+# 13. A deliberately weak random-slope problem
+
+Create a subset containing only two time points.
+
+```{r sparse-times}
+z2 <- subset(z, time %in% c(min(time), max(time)))
+```
+
+```{r sparse-slope}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  rs_sparse <- try(
+    mixed_random_slopes(
+      data       = z2,
+      response   = "height",
+      fixed      = "treatment * time",
+      slope      = "time",
+      group      = "subject",
+      correlated = TRUE
+    ),
+    silent = TRUE
+  )
+
+  if (inherits(rs_sparse, "try-error")) {
+    cat("The engine refused to estimate this model:\n\n")
+    cat(conditionMessage(attr(rs_sparse, "condition")), "\n")
+  } else {
+    mixed_diagnose(rs_sparse)
+  }
+}
+```
+
+With two observations per subject, a correlated random slope asks the data for one intercept and one slope per subject plus a residual variance, which is as many random effects as there are observations. `lme4` does not silently return a fragile answer here: it refuses, because the variance parameters and the residual are not separately identifiable. When the design is only slightly better supported, the fit succeeds but the covariance estimate is weak, and that is when `mixed_diagnose()` matters.
+
+The point is not that two observations per subject always make a random slope impossible. The point is that covariance estimation becomes much less informative and should be diagnosed rather than assumed.
+
+# 14. Fixed versus random: practical reasoning
+
+A factor is not random merely because its labels are letters or numbers. Consider:
+
+- What population is the factor intended to represent?
+- Were levels sampled from a wider population?
+- Is the scientific target the individual level means or the between-level variance?
+- Is prediction to new levels relevant?
+- Does the design imply grouping-induced dependence?
+
+Treatment factors are often fixed because specific levels are of direct scientific interest. Blocks, subjects, farms, sites, years, and genotypes can be fixed or random depending on the scientific estimand and sampling framework.
+
+# 15. Reporting random effects
+
+A high-quality report should provide more than the phrase "block was random."
+
+Report:
+
+1. each grouping factor;
+2. whether a random intercept, slope, or covariance was fitted;
+3. the grouping-unit count;
+4. variance and standard-deviation estimates;
+5. covariance/correlation when fitted;
+6. singularity and convergence status;
+7. whether BLUPs are used for interpretation or prediction.
+
+```{r random-table}
+if (exists("rs")) {
+  mixed_table(
+    rs,
+    component = "random",
+    format = "markdown",
+    caption = "Random-effect variance-covariance summary"
+  )
+}
+```
+
+# 16. Practice exercises
+
+## Exercise 1
+
+Fit a model with `time` as the only fixed predictor and a random intercept. Then add treatment and the treatment-by-time interaction. Explain which scientific estimand changes.
+
+```{r exercise1}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  e1a <- mixed_random_intercepts(z, "height", "time", "subject")
+  e1b <- mixed_random_intercepts(z, "height", "treatment * time", "subject")
+}
+```
+
+## Exercise 2
+
+Fit correlated and uncorrelated random slopes. Compare their estimated covariance structure and diagnostics.
+
+```{r exercise2}
+if (exists("rs") && exists("rs_diag")) {
+  mixed_compare(
+    correlated   = rs,
+    uncorrelated = rs_diag,
+    method = "information"
+  )
+}
+```
+
+## Exercise 3
+
+Use `mixed_blup()` to identify the most positive and most negative subject-level intercept deviations. Inspect their raw trajectories. Do not call them outliers without a diagnostic justification.
+
+# 17. Key take-home messages
+
+- Random effects describe modeled variation among groups or experimental units.
+- Random slopes model heterogeneity in response trajectories.
+- Nested and crossed structures describe design relationships.
+- BLUPs are conditional, partially pooled estimates, not raw group means.
+- A complex random covariance must be supported by the design and data.
+- Singularity is an inferential warning that deserves explanation.
+
+# 18. Next vignette
+
+Continue with `04-glmm-distributions.Rmd` to extend the hierarchical framework to binomial, count, beta, and zero-inflated responses.
+
+# References
+
+The notation and interpretation follow standard mixed-model practice implemented in `lme4` [@bates2015].

@@ -1,0 +1,358 @@
+---
+title: "Validation and Reproducibility"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{Validation and Reproducibility}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, error = FALSE,
+  collapse = TRUE, comment = "#>", fig.align = "center",
+  fig.width = 7, fig.height = 5, dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+A statistical package is not validated because its examples look plausible. Validation requires agreement with backend engines, known-design behavior, deterministic datasets and seeds, diagnostics, automated tests, dependency checks, and a reproducible local check workflow.
+
+This vignette explains how to validate `mixedFlowR` without confusing documentation examples with evidence of numerical correctness.
+
+# 1. Learning objectives
+
+You will learn to:
+
+- distinguish static validation from runtime statistical validation;
+- inspect package capabilities and block coverage;
+- verify frozen teaching datasets;
+- reproduce seeds and simulation scenarios;
+- run unit and golden tests locally;
+- regenerate `roxygen2` documentation and `NAMESPACE`;
+- run `R CMD check` through `rcmdcheck`;
+- validate optional backends separately;
+- document a validation session.
+
+# 2. Validation layers
+
+A useful validation hierarchy is:
+
+1. **static integrity**: files, exports, examples, placeholders, manifests;
+2. **unit tests**: functions return expected classes and safeguards;
+3. **golden backend tests**: wrappers agree with direct backend fits;
+4. **design benchmarks**: legacy and mixed representations align when theory says they should;
+5. **simulation validation**: known generating parameters are recovered with appropriate coverage;
+6. **cross-platform checks**: Windows, Linux, and supported R versions;
+7. **scientific review**: methods and interpretations remain defensible.
+
+# 3. Inspect capabilities
+
+```{r capabilities}
+library(mixedFlowR)
+mixed_capabilities()
+```
+
+This identifies which optional validation paths can run on the current computer.
+
+# 4. Confirm all 70 blocks are registered
+
+```{r blocks}
+blocks <- mixed_blocks()
+blocks
+nrow(blocks)
+```
+
+The block registry is a coverage map. It does not prove that every algorithm is numerically correct.
+
+# 5. Frozen teaching datasets
+
+```{r datasets}
+names_to_check <- c(
+  "splitplot", "longitudinal", "counts", "binomial", "beta",
+  "spatial", "met", "growth", "dose_response"
+)
+
+lapply(names_to_check, function(x) dim(mixed_data(x)))
+```
+
+Frozen teaching data allow documentation and tests to refer to stable inputs. They should not be regenerated silently during routine checks.
+
+# 6. Reproducible seeds
+
+```{r seed}
+set.seed(260818)
+rnorm(5)
+set.seed(260818)
+rnorm(5)
+```
+
+A seed helps reproduce stochastic computation. It does not make a stochastic estimator deterministic across every R/backend/platform version if underlying numerical algorithms change.
+
+# 7. Golden test principle
+
+A wrapper around `lme4` should agree with direct `lme4` fitting when both represent the same model.
+
+Example test logic:
+
+```{r golden-example, eval=FALSE}
+d <- mixed_data("longitudinal")
+
+wrapped <- mixed_fit(
+  height ~ treatment*time + (1|subject),
+  d,
+  engine = "lme4"
+)
+
+direct <- lme4::lmer(
+  height ~ treatment*time + (1|subject),
+  data = d
+)
+
+testthat::expect_equal(
+  lme4::fixef(wrapped$model),
+  lme4::fixef(direct),
+  tolerance = 1e-8
+)
+```
+
+Tests should compare quantities that are theoretically expected to agree, not merely visually similar output.
+
+# 8. Legacy split-plot benchmark
+
+Balanced split-plot data provide an important design benchmark.
+
+```{r legacy-benchmark}
+d <- mixed_data("splitplot")
+d$nitrogen_f <- factor(d$nitrogen)
+
+legacy <- fit_legacy_splitplot(
+  d, "yield", "block", "variety", "nitrogen_f"
+)
+splitplot_anova(legacy)
+```
+
+```{r legacy-mixed-benchmark}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  compare_legacy_mixed(
+    d, "yield", "block", "variety", "nitrogen_f"
+  )
+}
+```
+
+The benchmark should test equivalence properties that are expected in balanced settings and document where inferential conventions differ.
+
+# 9. Safeguard tests are scientific tests
+
+Examples include verifying that:
+
+- beta models reject 0/1 values when the selected family requires `(0,1)`;
+- LRTs of different fixed-effect structures under REML are blocked;
+- missing optional backends produce informative errors;
+- bootstrap seeds are recorded;
+- contamination flags never delete observations automatically.
+
+These are not cosmetic checks. They protect scientific interpretation.
+
+# 10. Run the package tests
+
+From the package root:
+
+```{r testthat, eval=FALSE}
+testthat::test_local()
+```
+
+For more diagnostic output:
+
+```{r testthat-reporter, eval=FALSE}
+testthat::test_local(reporter = "progress")
+```
+
+# 11. Regenerate roxygen2 documentation and NAMESPACE
+
+The authoritative export/import source is the roxygen documentation in `R/`.
+
+```{r roxygen, eval=FALSE}
+roxygen2::roxygenise()
+```
+
+Then inspect changes to:
+
+- `NAMESPACE`;
+- `man/*.Rd`;
+- any unexpectedly removed exports.
+
+Do not hand-maintain a generated `NAMESPACE` in parallel with roxygen tags.
+
+# 12. Load the source tree without installing
+
+```{r load-all, eval=FALSE}
+pkgload::load_all()
+```
+
+This is useful for development iteration. It does not replace installation and `R CMD check`.
+
+# 13. Run R CMD check through rcmdcheck
+
+```{r rcmdcheck, eval=FALSE}
+rcmdcheck::rcmdcheck(
+  args = c("--as-cran"),
+  error_on = "warning"
+)
+```
+
+Investigate every warning or note. Do not suppress a diagnostic merely to obtain a green badge.
+
+# 14. Vignette evaluation policy
+
+Most tutorial chunks use:
+
+```r
+knitr::opts_chunk$set(eval = TRUE)
+```
+
+with optional backends guarded by `requireNamespace()`.
+
+Heavy chunks are intentionally `eval=FALSE`, including:
+
+- thousands of bootstrap refits;
+- production-scale Bayesian sampling;
+- deliberately failing safeguard examples;
+- examples that write persistent files during package build.
+
+This policy keeps the documentation executable without making routine checks impractical.
+
+# 15. Validate optional backends individually
+
+A local validation matrix should include at least:
+
+| Backend | Validation target |
+|---|---|
+| `lme4` | LMM/GLMM agreement and random structures |
+| `nlme` | AR1/CAR1/heterogeneity/NLMM |
+| `glmmTMB` | count, beta, ZI, Toeplitz, spatial covariance |
+| `robustlmm` | robust estimate agreement |
+| `confintROB` | BCa/wild interval routes |
+| `emmeans` | EMM/trend consistency |
+| `gamlss` | parameter extraction/quantiles |
+| `brms` | prior, posterior, PPC, LOO |
+| `SpATS` | field model and surface extraction |
+| `sommer` | MET and GxE covariance |
+
+# 16. Heavy validation should be separated from CRAN-style smoke tests
+
+A simulation study for interval coverage or GxE recovery may take minutes or hours. Keep it in a dedicated validation script rather than forcing it into every unit-test run.
+
+A reproducible heavy-analysis protocol should record:
+
+- scenario ID;
+- seed;
+- generating parameters;
+- number of simulations;
+- failed fit count;
+- convergence count;
+- bias;
+- RMSE;
+- interval coverage;
+- computing environment.
+
+# 17. Simulation validation concept
+
+For a parameter `theta`, assess:
+
+- bias: average estimate minus true value;
+- RMSE: root mean squared estimation error;
+- coverage: fraction of intervals containing the true value;
+- convergence/failure rate;
+- sensitivity to sample size and design imbalance.
+
+Do not tune methods using only rejection rates or p-values.
+
+# 18. Reproducibility metadata
+
+```{r session-info}
+utils::sessionInfo()
+```
+
+Also record:
+
+```{r package-versions}
+pkgs <- c("mixedFlowR", "lme4", "nlme", "glmmTMB", "emmeans")
+sapply(pkgs, function(p) {
+  if (requireNamespace(p, quietly = TRUE)) as.character(utils::packageVersion(p)) else NA_character_
+})
+```
+
+# 19. Hashes and frozen artifacts
+
+For archived validation, calculate file hashes for:
+
+- frozen datasets;
+- simulation inputs;
+- release tarball;
+- reference metadata;
+- key expected-output files if used as golden artifacts.
+
+A hash detects unintended file change; it does not establish scientific validity.
+
+# 20. Cross-platform validation
+
+At minimum, validate on:
+
+- Windows with the intended user-facing R version;
+- a Linux CI environment;
+- the oldest supported R version where practical;
+- a current R-devel check for future compatibility.
+
+Optional compiled backends may expose platform-specific issues that are invisible in static validation.
+
+# 21. A local release gate
+
+Before release, require:
+
+1. `roxygen2::roxygenise()` clean;
+2. `testthat` clean;
+3. static audit clean;
+4. heavy simulation battery reviewed;
+5. `R CMD check --as-cran` without unexplained warnings;
+6. all 20 vignettes render with expected optional-package behavior;
+7. README examples consistent with exported API;
+8. source archive inspected after extraction;
+9. reference metadata reviewed;
+10. package version and NEWS updated.
+
+# 22. What this vignette does not claim
+
+The presence of code in a vignette is not runtime validation evidence. The actual runtime environment must execute the relevant tests.
+
+Likewise, passing `R CMD check` means the package satisfies important technical checks; it does not prove statistical optimality for every scientific application.
+
+# 23. Exercises
+
+1. Run `mixed_capabilities()` on two computers and compare optional backend availability.
+2. Create an invalid beta value and write a test expecting an error.
+3. Write a golden test comparing `mixed_fit()` with direct `lme4::lmer()`.
+4. Create a simulation scenario with a known random-intercept variance and assess recovery.
+5. Render a vignette after temporarily removing one optional package and confirm graceful degradation.
+
+# 24. Key take-home messages
+
+- Static validation and runtime validation are different layers.
+- Wrappers should be tested against their authoritative backends.
+- Design benchmarks are as important as software benchmarks.
+- Seeds, versions, and frozen inputs are part of reproducibility.
+- Heavy simulation belongs in a separate validation battery.
+- `R CMD check` is necessary but not sufficient for scientific validation.
+
+# 25. Next vignette
+
+Continue with `19-complete-agronomic-workflow.Rmd` for an end-to-end analysis that combines design, modeling, diagnosis, inference, sensitivity, visualization, and reporting.

@@ -1,0 +1,33 @@
+# R
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+.Rproj.user/
+*.Rproj
+
+# Build and check artifacts
+*.tar.gz
+*.zip
+*.Rcheck/
+doc/
+Meta/
+docs/
+_freeze/
+inst/doc/
+
+# Validation artifacts (kept outside the repository on purpose)
+logs/
+lib-isolada/
+validation-results/
+_original_snapshot_backup/
+tools/source_audit_report.json
+
+# Compiled
+*.o
+*.so
+*.dll
+
+# OS
+.DS_Store
+Thumbs.db

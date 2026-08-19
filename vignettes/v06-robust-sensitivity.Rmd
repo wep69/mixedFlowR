@@ -1,0 +1,334 @@
+---
+title: "Robust Mixed Models and Sensitivity Analysis"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{Robust Mixed Models and Sensitivity Analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, error = FALSE,
+  collapse = TRUE, comment = "#>", fig.align = "center",
+  fig.width = 7, fig.height = 5, dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+Robust analysis is most useful when it is framed as a sensitivity analysis: would the scientific conclusion change if influential observations or clusters received less leverage under a robust estimator?
+
+The `robustlmm` backend implements robust linear mixed-model estimation [@koller2016]. `mixedFlowR` also supports influence screens, classical-versus-robust comparisons, contamination summaries, and cluster-robust covariance through optional backends.
+
+# 1. Learning objectives
+
+You will learn to:
+
+- fit a robust Gaussian mixed model;
+- compare classical and robust fixed-effect estimates;
+- identify residual and cluster-level sensitivity;
+- distinguish influence from data error;
+- use cluster-robust covariance as another sensitivity tool;
+- construct a transparent contamination analysis;
+- report robust results without silently replacing the primary model.
+
+# 2. Baseline longitudinal data
+
+```{r data}
+library(mixedFlowR)
+z <- mixed_data("longitudinal")
+```
+
+Fit a classical LMM.
+
+```{r classical}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  classical <- mixed_fit(
+    height ~ treatment * time + (1 | subject),
+    data = z
+  )
+}
+```
+
+# 3. Fit a robust LMM
+
+```{r robust}
+if (requireNamespace("robustlmm", quietly = TRUE)) {
+  robust <- mixed_robust(
+    height ~ treatment * time + (1 | subject),
+    data = z
+  )
+
+  robust
+}
+```
+
+The robust estimator is not a generic replacement for every mixed model. It targets sensitivity to contamination within the supported Gaussian LMM framework.
+
+# 4. Compare classical and robust fixed effects
+
+```{r compare}
+if (exists("classical") && exists("robust")) {
+  robust_shift <- mixed_compare_robust(
+    classical,
+    robust
+  )
+
+  robust_shift
+}
+```
+
+Important columns include the classical estimate, robust estimate, absolute shift, and relative shift where defined.
+
+**Interpretation.** A small shift supports stability under this robustification. A large shift signals sensitivity and should trigger data review and substantive investigation.
+
+# 5. Create a deliberately contaminated copy
+
+Add an extreme teaching perturbation to one observation.
+
+```{r contaminate}
+z_cont <- z
+z_cont$height[1] <- z_cont$height[1] + 30
+```
+
+Plot the perturbation.
+
+```{r contamination-plot}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  ggplot2::ggplot(z_cont, ggplot2::aes(time, height, group = subject, colour = treatment)) +
+    ggplot2::geom_line(alpha = 0.25) +
+    ggplot2::geom_point(alpha = 0.5) +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::labs(title = "Teaching contamination scenario")
+}
+```
+
+# 6. Classical fit under contamination
+
+```{r classical-cont}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  classical_cont <- mixed_fit(
+    height ~ treatment * time + (1 | subject),
+    data = z_cont
+  )
+}
+```
+
+# 7. Robust fit under contamination
+
+```{r robust-cont}
+if (requireNamespace("robustlmm", quietly = TRUE)) {
+  robust_cont <- mixed_robust(
+    height ~ treatment * time + (1 | subject),
+    data = z_cont
+  )
+}
+```
+
+```{r compare-cont}
+if (exists("classical_cont") && exists("robust_cont")) {
+  mixed_compare_robust(
+    classical_cont,
+    robust_cont
+  )
+}
+```
+
+This is the type of scenario in which classical-versus-robust comparison becomes instructive.
+
+# 8. Observation-level robust influence screen
+
+```{r influence-observation}
+if (exists("classical_cont")) {
+  obs_screen <- mixed_robust_influence(
+    classical_cont
+  )
+
+  head(obs_screen[order(-obs_screen$abs_robust_z), ])
+}
+```
+
+# 9. Cluster-level screen
+
+```{r influence-cluster}
+if (exists("classical_cont")) {
+  cluster_screen <- mixed_robust_influence(
+    classical_cont,
+    cluster = "subject"
+  )
+
+  cluster_screen
+}
+```
+
+Cluster aggregation helps identify whether sensitivity is concentrated in one experimental unit rather than one isolated measurement.
+
+# 10. Contamination flagging
+
+```{r contamination-screen}
+if (exists("classical_cont")) {
+  flags <- mixed_contamination(
+    classical_cont,
+    cluster   = "subject",
+    threshold = 2.5
+  )
+
+  flags
+}
+```
+
+Rows are flagged for **review**, never automatically deleted.
+
+# 11. What to do after a flag
+
+A defensible sequence is:
+
+1. check the original field sheet, sensor file, or laboratory record;
+2. verify units and data entry;
+3. identify whether the value is physically plausible;
+4. determine whether the observation belongs to a special but valid condition;
+5. compare primary and sensitivity analyses;
+6. document any exclusion criterion independently of the desired statistical result.
+
+# 12. Cluster-robust covariance
+
+`clubSandwich` can provide cluster-robust covariance estimates for supported models.
+
+```{r cr2}
+if (
+  exists("classical") &&
+  requireNamespace("clubSandwich", quietly = TRUE)
+) {
+  V_CR2 <- mixed_robust_vcov(
+    classical,
+    cluster = "subject",
+    type    = "CR2"
+  )
+
+  V_CR2
+}
+```
+
+CR2 changes the covariance estimator for fixed effects. It is not the same method as fitting a robust mixed model with `robustlmm`.
+
+# 13. Group-deletion influence for lme4
+
+```{r influence-me}
+if (
+  exists("classical") &&
+  requireNamespace("influence.ME", quietly = TRUE)
+) {
+  infl <- mixed_influence(
+    classical,
+    group = "subject"
+  )
+
+  infl
+}
+```
+
+This evaluates sensitivity to deleting whole grouping units and complements residual-based screens.
+
+# 14. Robust analysis does not solve model misspecification
+
+If residuals show a strong nonlinear time trend, omitted treatment interaction, or serial dependence, downweighting unusual observations does not correct the mean or covariance model.
+
+Robustness should therefore come **after** the core design and structural modeling decisions.
+
+# 15. A three-model sensitivity panel
+
+A useful report can compare:
+
+- classical LMM estimate;
+- robust LMM estimate;
+- classical estimate with cluster-robust covariance.
+
+These methods address different vulnerabilities and should not be described as interchangeable.
+
+# 16. Robust estimate table
+
+```{r robust-table}
+if (exists("robust_cont")) {
+  mixed_table(
+    robust_cont,
+    component = "fixed",
+    format = "markdown",
+    caption = "Robust mixed-model fixed-effect estimates"
+  )
+}
+```
+
+# 17. A stricter contamination threshold
+
+```{r strict-threshold}
+if (exists("classical_cont")) {
+  mixed_contamination(
+    classical_cont,
+    cluster = "subject",
+    threshold = 3
+  )
+}
+```
+
+The threshold is a screening setting, not an objective truth boundary.
+
+# 18. Reporting template
+
+A transparent sensitivity paragraph should state:
+
+1. why robust analysis was performed;
+2. estimator/backend used;
+3. whether influential observations or clusters were identified;
+4. how classical and robust estimates differed;
+5. whether the primary biological conclusion changed;
+6. whether any observation was excluded and why;
+7. whether cluster-robust covariance altered uncertainty materially.
+
+# 19. Exercises
+
+## Exercise 1
+
+Move the contamination from one observation to all measurements of one subject. Compare the change in classical and robust estimates.
+
+## Exercise 2
+
+Compare `CR1` and `CR2` covariance estimates when `clubSandwich` is available.
+
+```{r exercise-cr}
+if (
+  exists("classical") &&
+  requireNamespace("clubSandwich", quietly = TRUE)
+) {
+  V_CR1 <- mixed_robust_vcov(classical, "subject", "CR1")
+  V_CR2 <- mixed_robust_vcov(classical, "subject", "CR2")
+}
+```
+
+## Exercise 3
+
+Use `mixed_contamination()` on the uncontaminated dataset. Explain why a flag can still represent a valid extreme observation rather than an error.
+
+# 20. Key take-home messages
+
+- Robust estimation is a sensitivity tool, not a license to ignore model structure.
+- Influence and contamination flags trigger review, not automatic deletion.
+- Classical and robust estimates should be compared transparently.
+- Cluster-robust covariance and robust mixed-model fitting address different inferential vulnerabilities.
+- Exclusions require an independently defensible scientific or data-quality reason.
+
+# 21. What comes next
+
+Stage 3 begins with `07-bootstrap-inference.Rmd`, which develops interval estimation and parametric-bootstrap comparisons for mixed models.
+
+# References
+
+The robust LMM module builds on the robust scoring-equation framework implemented in `robustlmm` [@koller2016].

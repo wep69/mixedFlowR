@@ -1,0 +1,96 @@
+TY  - JOUR
+AU  - Bates, Douglas
+AU  - Mächler, Martin
+AU  - Bolker, Ben
+AU  - Walker, Steve
+TI  - Fitting Linear Mixed-Effects Models Using lme4
+JO  - Journal of Statistical Software
+PY  - 2015
+VL  - 67
+IS  - 1
+SP  - 1
+EP  - 48
+DO  - 10.18637/jss.v067.i01
+ER  -
+
+TY  - JOUR
+AU  - Brooks, Mollie E.
+AU  - Kristensen, Kasper
+AU  - van Benthem, Koen J.
+AU  - Magnusson, Arni
+AU  - Berg, Casper W.
+AU  - Nielsen, Anders
+AU  - Skaug, Hans J.
+AU  - Mächler, Martin
+AU  - Bolker, Benjamin M.
+TI  - glmmTMB Balances Speed and Flexibility Among Packages for Zero-inflated Generalized Linear Mixed Modeling
+JO  - The R Journal
+PY  - 2017
+VL  - 9
+IS  - 2
+SP  - 378
+EP  - 400
+DO  - 10.32614/RJ-2017-066
+ER  -
+
+TY  - JOUR
+AU  - Koller, Manuel
+TI  - robustlmm: An R Package for Robust Estimation of Linear Mixed-Effects Models
+JO  - Journal of Statistical Software
+PY  - 2016
+VL  - 75
+IS  - 6
+SP  - 1
+EP  - 24
+DO  - 10.18637/jss.v075.i06
+ER  -
+
+TY  - JOUR
+AU  - Rigby, R. A.
+AU  - Stasinopoulos, D. M.
+TI  - Generalized Additive Models for Location, Scale and Shape
+JO  - Journal of the Royal Statistical Society: Series C (Applied Statistics)
+PY  - 2005
+VL  - 54
+IS  - 3
+SP  - 507
+EP  - 554
+DO  - 10.1111/j.1467-9876.2005.00510.x
+ER  -
+
+TY  - JOUR
+AU  - Bürkner, Paul-Christian
+TI  - brms: An R Package for Bayesian Multilevel Models Using Stan
+JO  - Journal of Statistical Software
+PY  - 2017
+VL  - 80
+IS  - 1
+SP  - 1
+EP  - 28
+DO  - 10.18637/jss.v080.i01
+ER  -
+
+TY  - JOUR
+AU  - Rodríguez-Álvarez, María Xosé
+AU  - Boer, Martin P.
+AU  - van Eeuwijk, Fred A.
+AU  - Eilers, Paul H. C.
+TI  - Correcting for Spatial Heterogeneity in Plant Breeding Experiments with P-splines
+JO  - Spatial Statistics
+PY  - 2018
+VL  - 23
+SP  - 52
+EP  - 71
+DO  - 10.1016/j.spasta.2017.10.003
+ER  -
+
+TY  - JOUR
+AU  - Covarrubias-Pazaran, Giovanny
+TI  - Genome-Assisted Prediction of Quantitative Traits Using the R Package sommer
+JO  - PLOS ONE
+PY  - 2016
+VL  - 11
+IS  - 6
+SP  - e0156744
+DO  - 10.1371/journal.pone.0156744
+ER  -

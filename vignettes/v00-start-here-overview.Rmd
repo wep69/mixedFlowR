@@ -1,0 +1,2682 @@
+---
+title: "Start Here: Complete mixedFlowR Workflow Overview"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: false
+vignette: >
+  %\VignetteIndexEntry{Start Here: Complete mixedFlowR Workflow Overview}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.align = "center",
+                      fig.width = 7, fig.height = 5)
+library(mixedFlowR)
+set.seed(260818)
+```
+
+# How to read this overview
+
+This is the orientation map of `mixedFlowR`: it shows the complete analytical flow,
+explains how the modules connect, and points to the focused tutorials that execute
+each step. The code below is shown as reference. Every command appears executed
+either in the block vignettes listed at the end or in the manual examples, which
+are run by `R CMD check`.
+
+The three orientation calls below do run here, so this page also documents the
+machine that built it.
+
+```{r orientation}
+mixed_capabilities()
+```
+
+```{r roadmap}
+utils::head(mixed_blocks(), 12)
+```
+
+```{r teaching-data}
+d <- mixed_data("splitplot")
+str(d)
+```
+
+## 1. Why this tutorial exists
+
+Mixed models become difficult when several decisions are introduced at the same time: experimental hierarchy, fixed versus random effects, response distribution, covariance structure, repeated observations, spatial variation, influential observations, small-sample inference, nonlinear response, and prediction.
+
+`mixedFlowR` is organized so that these decisions can be introduced in a logical order.
+
+The central rule is simple:
+
+**Start with the experimental unit and the randomization. Then specify the model. Diagnose it before interpreting it. Report estimates with uncertainty.**
+
+This tutorial follows that rule from a basic split-plot experiment through advanced distributional, Bayesian, spatial, and multi-environment analyses.
+
+The examples use the package's frozen simulated teaching datasets. Their seed is `260818`. They are realistic enough for instruction but are **not field evidence**. Numerical values shown in the descriptive tables below are observed summaries of those frozen teaching datasets. They are not model estimates and should not be interpreted as inferential results.
+
+---
+
+## 2. Learning objectives
+
+After working through this tutorial, the reader should be able to:
+
+1. identify the experimental unit, hierarchy, replication, and possible pseudoreplication before fitting a model;
+2. connect classical split-plot error strata to a modern linear mixed model;
+3. distinguish random intercepts, random slopes, nested effects, and crossed effects;
+4. choose a response family for counts, proportions, and binary data;
+5. separate random-effect covariance from residual covariance;
+6. evaluate temporal correlation and heteroscedasticity;
+7. use robust estimation and bootstrap inference as sensitivity tools rather than automatic replacements for the primary analysis;
+8. analyze qualitative treatments through estimated marginal means and planned contrasts;
+9. analyze quantitative treatments through trends, curves, and biologically meaningful optima;
+10. fit nonlinear growth and dose-response mixed models;
+11. understand when a mixed GAMLSS or Bayesian multilevel model adds scientifically meaningful flexibility;
+12. use spatial field-trial and multi-environment modules;
+13. perform diagnostics and model comparisons with design-aware safeguards;
+14. produce reusable tables, figures, and a reproducible report skeleton;
+15. navigate all 70 package blocks without having to learn every function at once.
+
+---
+
+## 3. The package in one map
+
+### 3.1 Instructional stages
+
+| Blocks   | Instructional stage                              | Main functions                                                                                                                                                                                                         |
+|:---------|:-------------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1-4      | Design before modeling                           | mixed_design_audit(), mixed_hierarchy(), mixed_balance(), mixed_pseudorep()                                                                                                                                            |
+| 5-10     | Legacy experimental strata                       | fit_legacy_splitplot(), splitplot_ems(), splitplot_anova(), compare_legacy_mixed(), fit_legacy_splitsplit(), fit_legacy_stripplot()                                                                                    |
+| 11-16    | Gaussian mixed-model core                        | mixed_fit(), mixed_random_intercepts(), mixed_random_slopes(), mixed_nested(), mixed_crossed(), mixed_blup()                                                                                                           |
+| 17-21    | GLMM response families                           | mixed_glmm(), mixed_binomial(), mixed_count(), mixed_beta(), mixed_zero_inflated()                                                                                                                                     |
+| 22-31    | Residual, temporal, spatial covariance           | mixed_covariance(), mixed_heterogeneity(), mixed_ar1(), mixed_car1(), mixed_toeplitz(), mixed_covariance_compare(), mixed_spatiotemporal(), mixed_spatial_covariance(), mixed_temporal_grid(), mixed_covariance_plot() |
+| 32-36    | Robust and sensitivity analysis                  | mixed_robust(), mixed_robust_influence(), mixed_compare_robust(), mixed_contamination(), mixed_robust_vcov()                                                                                                           |
+| 37-40    | Bootstrap inference                              | mixed_boot(), mixed_boot_fixed(), mixed_boot_variance(), mixed_boot_predict()                                                                                                                                          |
+| 41-45    | Mixed GAMLSS                                     | mixed_gamlss(), mixed_gamlss_parameters(), mixed_gamlss_select(), mixed_gamlss_quantiles(), mixed_gamlss_diagnose()                                                                                                    |
+| 46-51    | Bayesian multilevel workflow                     | mixed_bayes(), mixed_prior(), mixed_prior_predictive(), mixed_posterior(), mixed_pp_check(), mixed_loo()                                                                                                               |
+| 52-56    | Marginal means and quantitative factors          | mixed_emmeans(), mixed_contrasts(), mixed_cld(), mixed_trend(), mixed_curve(), plus mixed_quantitative() and mixed_optimum()                                                                                           |
+| 57-60    | Nonlinear and random regression                  | mixed_nonlinear(), mixed_growth(), mixed_dose_response(), mixed_random_curve()                                                                                                                                         |
+| 61-64    | Field spatial and MET/GxE                        | mixed_spatial_field(), mixed_spatial_surface(), mixed_met(), mixed_gxe()                                                                                                                                               |
+| 65-70    | Diagnostics, comparison, communication, teaching | mixed_diagnose(), mixed_influence(), mixed_compare(), mixed_table(), mixed_plot(), mixed_tour(), plus mixed_report()                                                                                                   |
+
+The progression is deliberate. A reader should not begin with Block 46 merely because Bayesian modeling is available, or with Block 61 merely because spatial smoothing is visually attractive. Each extension should solve a scientific or design problem that is actually present.
+
+### 3.2 Inspect the package programmatically
+
+```r
+library(mixedFlowR)
+
+# Which optional engines are available on this computer?
+mixed_capabilities()
+
+# Show all 70 blocks.
+mixed_blocks()
+
+# Search only a conceptual area.
+mixed_blocks("Bootstrap")
+mixed_blocks("Spatial|field")
+mixed_blocks("GAMLSS|Bayesian")
+```
+
+**Interpretation.** `mixed_capabilities()` is a practical first step on a teaching or laboratory computer because many advanced modules are deliberately optional. The package remains an orchestration layer: estimation is delegated to established engines such as `lme4`, `nlme`, `glmmTMB`, `robustlmm`, `gamlss`, `brms`, `SpATS`, and `sommer`.
+
+---
+
+## 4. Teaching datasets used in this tutorial
+
+```r
+mixed_data("splitplot")
+mixed_data("longitudinal")
+mixed_data("counts")
+mixed_data("binomial")
+mixed_data("beta")
+mixed_data("growth")
+mixed_data("dose_response")
+mixed_data("spatial")
+mixed_data("met")
+```
+
+| Dataset | Agronomic teaching problem | Main concepts |
+|---|---|---|
+| `splitplot` | Variety whole plots and quantitative nitrogen subplots | design audit, legacy split-plot, LMM, trends |
+| `longitudinal` | Repeated plant height | random slopes, residual correlation, GAMLSS, Bayes |
+| `counts` | Pest counts across time | Poisson/NB, zero inflation, DHARMa diagnostics |
+| `binomial` | Diseased plants out of 20 | binomial GLMM |
+| `beta` | Disease severity in `(0,1)` | beta mixed model |
+| `growth` | Biomass trajectories | nonlinear growth mixed models |
+| `dose_response` | Continuous response across dose | dose-response, nonlinear parameters |
+| `spatial` | Row-column field trial | spatial covariance, SpATS |
+| `met` | Genotype by environment trial | MET, GxE covariance, reduced rank |
+
+---
+
+# Part I. Basic path
+
+## 5. Start with the design, not the model
+
+### 5.1 A split-plot example
+
+```r
+d <- mixed_data("splitplot")
+
+str(d)
+head(d)
+```
+
+The design has:
+
+- `block`: replicate block;
+- `variety`: whole-plot treatment;
+- `nitrogen`: subplot quantitative treatment;
+- `yield`: response.
+
+The frozen observed means are:
+
+| variety   |   nitrogen |   Observed mean yield |
+|:----------|-----------:|----------------------:|
+| V1        |          0 |                 49.46 |
+| V1        |         50 |                 56.72 |
+| V1        |        100 |                 61.54 |
+| V1        |        150 |                 64.22 |
+| V2        |          0 |                 54.6  |
+| V2        |         50 |                 61.51 |
+| V2        |        100 |                 67.14 |
+| V2        |        150 |                 68.64 |
+| V3        |          0 |                 47.18 |
+| V3        |         50 |                 54.79 |
+| V3        |        100 |                 57.32 |
+| V3        |        150 |                 61.17 |
+
+These summaries already suggest an increasing nitrogen response and differences among varieties. They do **not** account for the split-plot error structure, uncertainty, or repeated treatment contrasts.
+
+### 5.2 Audit the declared design
+
+```r
+audit <- mixed_design_audit(
+  data     = d,
+  response = "yield",
+  block    = "block",
+  whole    = "variety",
+  sub      = "nitrogen"
+)
+
+audit
+audit$roles
+audit$warnings
+```
+
+Now inspect the hierarchy explicitly:
+
+```r
+mixed_hierarchy(
+  d,
+  block = "block",
+  whole = "variety",
+  sub   = "nitrogen"
+)
+```
+
+Check support and balance:
+
+```r
+cell_support <- mixed_balance(
+  d,
+  c("block", "variety", "nitrogen")
+)
+
+cell_support
+```
+
+Screen the experimental-unit structure:
+
+```r
+d$whole_plot <- interaction(d$block, d$variety, drop = TRUE)
+
+mixed_pseudorep(
+  d,
+  response  = "yield",
+  cluster   = "whole_plot",
+  treatment = "variety"
+)
+```
+
+### 5.3 What to interpret
+
+A design audit answers questions that no model-selection criterion can repair later:
+
+- Are all intended treatment combinations represented?
+- Which factor was randomized to the whole plot?
+- Which observations share an experimental unit?
+- Is a repeated measurement being mistaken for an independent replicate?
+- Are empty cells or missing treatment combinations present?
+- Does the proposed random structure reflect the actual randomization?
+
+If these answers are uncertain, the next step is not model fitting. The next step is design clarification.
+
+---
+
+## 6. Legacy split-plot ANOVA as a bridge to mixed models
+
+Blocks 5 to 10 preserve the classical experimental logic. This is useful for instruction, checking balanced designs, and understanding denominator error terms.
+
+### 6.1 Fit the classical split-plot representation
+
+```r
+legacy <- fit_legacy_splitplot(
+  data     = d,
+  response = "yield",
+  block    = "block",
+  whole    = "variety",
+  sub      = "nitrogen"
+)
+
+legacy
+```
+
+Expected mean-square structure:
+
+```r
+ems <- splitplot_ems(
+  data  = d,
+  block = "block",
+  whole = "variety",
+  sub   = "nitrogen"
+)
+
+ems
+```
+
+Extract the classical ANOVA:
+
+```r
+legacy_anova <- splitplot_anova(legacy)
+legacy_anova
+```
+
+### 6.2 Compare the legacy and mixed representations
+
+```r
+if (requireNamespace("lme4", quietly = TRUE)) {
+  legacy_vs_mixed <- compare_legacy_mixed(
+    data     = d,
+    response = "yield",
+    block    = "block",
+    whole    = "variety",
+    sub      = "nitrogen"
+  )
+
+  legacy_vs_mixed
+}
+```
+
+### 6.3 Why this comparison is educationally important
+
+In a classical split-plot, the whole-plot treatment is tested against variation among whole plots within blocks, while subplot effects are tested against the subplot-level residual.
+
+A mixed model represents the same hierarchy through random effects.
+
+For this design, a common modern representation is:
+
+```r
+if (requireNamespace("lme4", quietly = TRUE)) {
+  fit_sp <- mixed_fit(
+    yield ~ variety * nitrogen +
+      (1 | block) +
+      (1 | block:variety),
+    data = d,
+    engine = "lme4"
+  )
+}
+```
+
+The term `(1 | block:variety)` represents variability among whole plots. It is not decorative syntax. It corresponds to a real randomization level.
+
+### 6.4 Basic interpretation
+
+If the balanced legacy analysis and the equivalent LMM disagree materially, do not immediately choose the model with the preferred p-value. Check:
+
+1. whether nitrogen is being treated the same way in both models;
+2. whether the whole-plot experimental unit is correctly represented;
+3. whether the fixed-effect parameterization is comparable;
+4. whether missing observations or imbalance have altered the classical decomposition;
+5. whether one analysis is using a regression treatment of nitrogen and the other a categorical treatment.
+
+---
+
+## 7. The core LMM workflow
+
+### 7.1 Fit
+
+```r
+if (requireNamespace("lme4", quietly = TRUE)) {
+  fit_lmm <- mixed_fit(
+    yield ~ variety * nitrogen +
+      (1 | block) +
+      (1 | block:variety),
+    data = d
+  )
+}
+```
+
+### 7.2 Diagnose before interpreting
+
+```r
+if (exists("fit_lmm")) {
+  diag_lmm <- mixed_diagnose(fit_lmm)
+  diag_lmm
+
+  mixed_table(
+    diag_lmm,
+    component = "diagnostics"
+  )
+}
+```
+
+A publication-oriented residual plot:
+
+```r
+if (exists("fit_lmm")) {
+  p_res <- mixed_plot(
+    fit_lmm,
+    type = "residuals"
+  )
+
+  p_res
+}
+```
+
+### 7.3 Omnibus inference
+
+For Gaussian `lmer` fits, small-sample denominator degrees of freedom can be requested explicitly.
+
+```r
+if (
+  exists("fit_lmm") &&
+  requireNamespace("lmerTest", quietly = TRUE)
+) {
+  tab_sat <- mixed_anova(
+    fit_lmm,
+    ddf = "Satterthwaite"
+  )
+
+  tab_sat
+}
+```
+
+Kenward-Roger:
+
+```r
+if (
+  exists("fit_lmm") &&
+  requireNamespace("lmerTest", quietly = TRUE) &&
+  requireNamespace("pbkrtest", quietly = TRUE)
+) {
+  tab_kr <- mixed_anova(
+    fit_lmm,
+    ddf = "Kenward-Roger"
+  )
+
+  tab_kr
+}
+```
+
+### 7.4 Publication tables
+
+```r
+if (exists("fit_lmm")) {
+  mixed_table(
+    fit_lmm,
+    component = "fixed",
+    format = "markdown",
+    caption = "Fixed-effect estimates for the split-plot LMM"
+  )
+
+  mixed_table(
+    fit_lmm,
+    component = "random",
+    format = "markdown",
+    caption = "Variance components for the split-plot LMM"
+  )
+}
+```
+
+### 7.5 How to interpret the result
+
+Use the following order:
+
+1. **Design validity:** was the correct whole-plot random effect fitted?
+2. **Convergence and singularity:** is the fitted random structure estimable?
+3. **Interaction:** is there evidence that the nitrogen response differs among varieties?
+4. **Main effects:** interpret them conditionally if an interaction is important.
+5. **Variance components:** how much variability lies at block, whole-plot, and residual levels?
+6. **Uncertainty:** report intervals or appropriately calibrated tests, not estimates alone.
+7. **Biological meaning:** a statistically detectable slope can still be agronomically trivial.
+
+---
+
+## 8. Random intercepts, random slopes, nesting, crossing, and shrinkage
+
+The `longitudinal` dataset provides repeated plant-height measurements.
+
+Observed means at the first and last recorded times are:
+
+| treatment   |   time |   Observed mean height |
+|:------------|-------:|-----------------------:|
+| T1          |      0 |                  16.86 |
+| T1          |      5 |                  26.88 |
+| T2          |      0 |                  18.31 |
+| T2          |      5 |                  30.96 |
+
+The descriptive pattern suggests growth over time and a larger mean at the final observation for `T2`. A mixed model is required because measurements from the same subject are not independent.
+
+### 8.1 Random intercept
+
+```r
+z <- mixed_data("longitudinal")
+
+if (requireNamespace("lme4", quietly = TRUE)) {
+  ri <- mixed_random_intercepts(
+    data     = z,
+    response = "height",
+    fixed    = "treatment * time",
+    group    = "subject"
+  )
+}
+```
+
+### 8.2 Random slope
+
+```r
+if (requireNamespace("lme4", quietly = TRUE)) {
+  rs <- mixed_random_slopes(
+    data       = z,
+    response   = "height",
+    fixed      = "treatment * time",
+    slope      = "time",
+    group      = "subject",
+    correlated = TRUE
+  )
+}
+```
+
+A diagonal intercept-slope covariance is also available:
+
+```r
+if (requireNamespace("lme4", quietly = TRUE)) {
+  rs_diag <- mixed_random_slopes(
+    data       = z,
+    response   = "height",
+    fixed      = "treatment * time",
+    slope      = "time",
+    group      = "subject",
+    correlated = FALSE
+  )
+}
+```
+
+### 8.3 BLUPs and partial pooling
+
+```r
+if (exists("rs")) {
+  subject_effects <- mixed_blup(
+    rs,
+    group = "subject"
+  )
+
+  head(subject_effects)
+}
+```
+
+Plot random effects:
+
+```r
+if (exists("rs")) {
+  mixed_plot(
+    rs,
+    type = "random"
+  )
+}
+```
+
+Plot the estimated random-effect covariance or correlation matrix:
+
+```r
+if (exists("rs")) {
+  mixed_covariance_plot(
+    rs,
+    group = "subject",
+    correlation = TRUE
+  )
+}
+```
+
+### 8.4 Interpretation
+
+A random intercept says that subjects can start at different levels.
+
+A random slope says that subjects can also change at different rates.
+
+The estimated subject effects are partially pooled. Extreme raw subject means are pulled toward the population pattern according to the information available for each subject and the estimated between-subject variation.
+
+A near-perfect intercept-slope correlation, or a random-slope variance near zero, can indicate that the requested random structure is too complex for the available data. This is a diagnostic issue, not a reason to hide the warning.
+
+### 8.5 Nested and crossed effects
+
+Nested example:
+
+```r
+d$wp <- interaction(d$block, d$variety, drop = TRUE)
+
+if (requireNamespace("lme4", quietly = TRUE)) {
+  nested_fit <- mixed_nested(
+    data     = d,
+    response = "yield",
+    fixed    = "variety * nitrogen",
+    groups   = c("block", "wp")
+  )
+}
+```
+
+Crossed example:
+
+```r
+m <- mixed_data("met")
+
+if (requireNamespace("lme4", quietly = TRUE)) {
+  crossed_fit <- mixed_crossed(
+    data     = m,
+    response = "yield",
+    fixed    = "1",
+    groups   = c("genotype", "environment")
+  )
+}
+```
+
+**Rule of thumb:** nested and crossed are properties of the sampling or randomization structure, not cosmetic formula choices.
+
+---
+
+## 9. Qualitative factors: EMMs, contrasts, and compact letters
+
+Suppose variety is scientifically qualitative.
+
+```r
+if (
+  exists("fit_lmm") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  emm_variety <- mixed_emmeans(
+    fit_lmm,
+    specs = ~ variety
+  )
+
+  emm_variety
+}
+```
+
+Planned or pairwise contrasts:
+
+```r
+if (
+  exists("fit_lmm") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  variety_pairs <- mixed_contrasts(
+    fit_lmm,
+    specs = ~ variety,
+    method = "pairwise",
+    adjust = "tukey"
+  )
+
+  variety_pairs
+}
+```
+
+Compact-letter display:
+
+```r
+if (
+  exists("fit_lmm") &&
+  requireNamespace("emmeans", quietly = TRUE) &&
+  requireNamespace("multcomp", quietly = TRUE) &&
+  requireNamespace("multcompView", quietly = TRUE)
+) {
+  variety_cld <- mixed_cld(
+    fit_lmm,
+    specs = ~ variety,
+    adjust = "tukey"
+  )
+
+  variety_cld
+}
+```
+
+### Interpretation caution
+
+A compact-letter display is a convenient communication device, but shared letters do **not** prove equality. They indicate that a particular multiplicity-adjusted comparison did not detect a difference at the chosen threshold.
+
+Whenever possible, pair letters with estimates, uncertainty intervals, and the scientific scale of the difference.
+
+---
+
+## 10. Quantitative factors: slopes, curves, and optima
+
+Nitrogen has numeric meaning. Treating every dose as an unrelated category throws away that structure.
+
+### 10.1 Fit a quadratic qualitative-by-quantitative model
+
+```r
+if (requireNamespace("lme4", quietly = TRUE)) {
+  qfit <- mixed_quantitative(
+    data         = d,
+    response     = "yield",
+    quantitative = "nitrogen",
+    qualitative  = "variety",
+    group        = "block",
+    degree       = 2,
+    basis        = "polynomial"
+  )
+}
+```
+
+### 10.2 Local or marginal trends
+
+```r
+if (
+  exists("qfit") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  nitrogen_trends <- mixed_trend(
+    qfit,
+    specs = ~ variety,
+    var   = "nitrogen"
+  )
+
+  nitrogen_trends
+}
+```
+
+### 10.3 Prediction curves
+
+```r
+if (
+  exists("qfit") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  nitrogen_curve <- mixed_curve(
+    qfit,
+    variable = "nitrogen",
+    values   = seq(0, 150, by = 10),
+    by       = "variety"
+  )
+
+  head(nitrogen_curve)
+}
+```
+
+Publication-ready curve with observed data:
+
+```r
+if (
+  exists("qfit") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  p_curve <- mixed_plot(
+    qfit,
+    type      = "curve",
+    x         = "nitrogen",
+    by        = "variety",
+    values    = seq(0, 150, by = 2.5),
+    show_data = TRUE
+  )
+
+  p_curve
+}
+```
+
+### 10.4 Grid-based optimum
+
+```r
+if (
+  exists("qfit") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  opt <- mixed_optimum(
+    qfit,
+    variable  = "nitrogen",
+    range     = c(0, 150),
+    by        = "variety",
+    objective = "max",
+    n         = 501
+  )
+
+  opt
+}
+```
+
+### 10.5 Interpretation
+
+The optimum returned by `mixed_optimum()` is an estimand on the declared finite prediction grid. It is not proof of a global biological optimum outside the observed range.
+
+For agronomic decisions, report the shape of the response, the estimated optimum inside the experimental range, uncertainty around the curve, biological plausibility, and whether an economic optimum would differ from the biological maximum.
+
+---
+
+# Part II. Non-Gaussian and dependence-aware models
+
+## 11. Count data: Poisson, negative binomial, and zero inflation
+
+The pest-count dataset contains overdispersion and some zeros.
+
+Observed summaries:
+
+| treatment   |   observed_mean_count |   observed_zero_fraction |
+|:------------|----------------------:|-------------------------:|
+| bio         |                  5.16 |                    0.141 |
+| chemical    |                  2.84 |                    0.25  |
+| control     |                  4.8  |                    0.25  |
+
+### 11.1 Negative-binomial GLMM
+
+```r
+cdat <- mixed_data("counts")
+
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  count_nb <- mixed_count(
+    count ~ treatment * time + (1 | plot),
+    data   = cdat,
+    family = "nbinom2"
+  )
+}
+```
+
+### 11.2 Zero-inflated model
+
+```r
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  count_zi <- mixed_zero_inflated(
+    count ~ treatment * time + (1 | plot),
+    data        = cdat,
+    ziformula   = ~ 1,
+    dispformula = ~ 1
+  )
+}
+```
+
+### 11.3 Simulation-based residual diagnostics
+
+```r
+if (
+  exists("count_nb") &&
+  requireNamespace("DHARMa", quietly = TRUE)
+) {
+  count_diag <- mixed_diagnose(
+    count_nb,
+    simulate = TRUE,
+    nsim = 500
+  )
+
+  count_diag$simulation
+}
+```
+
+### 11.4 Compare candidates without automatic selection
+
+```r
+if (exists("count_nb") && exists("count_zi")) {
+  mixed_compare(
+    NB = count_nb,
+    ZI = count_zi,
+    method = "information"
+  )
+}
+```
+
+### Interpretation
+
+Do not choose zero inflation simply because the dataset contains zeros. A negative-binomial distribution can naturally generate many zeros. The scientific question is whether there is evidence for a distinct zero-generating process that is meaningful in the experiment.
+
+Inspect residual behavior, estimated dispersion, biological mechanism, and predictive adequacy together.
+
+---
+
+## 12. Binomial disease incidence
+
+Observed treatment incidence in the frozen teaching dataset:
+
+| treatment   |   diseased |   total |   Observed incidence |
+|:------------|-----------:|--------:|---------------------:|
+| bio         |        105 |     400 |                0.262 |
+| chemical    |         65 |     400 |                0.162 |
+| control     |        168 |     400 |                0.42  |
+
+Fit the model to counts of diseased and healthy plants:
+
+```r
+bdat <- mixed_data("binomial")
+
+if (requireNamespace("lme4", quietly = TRUE)) {
+  disease_bin <- mixed_binomial(
+    data      = bdat,
+    successes = "diseased",
+    failures  = "healthy",
+    fixed     = "treatment",
+    group     = "block"
+  )
+}
+```
+
+Treatment marginal means on the response scale:
+
+```r
+if (
+  exists("disease_bin") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  disease_emm <- mixed_emmeans(
+    disease_bin,
+    specs = ~ treatment,
+    type  = "response"
+  )
+
+  disease_emm
+}
+```
+
+**Interpretation.** The descriptive proportions suggest lower disease incidence under the chemical treatment and higher incidence under the control. The inferential model should determine how much of that observed difference remains after accounting for grouped experimental structure and binomial sampling uncertainty.
+
+---
+
+## 13. Continuous proportions: beta mixed models
+
+Observed disease-severity summaries:
+
+| treatment   |   observed_mean |   observed_sd |
+|:------------|----------------:|--------------:|
+| bio         |           0.447 |         0.137 |
+| chemical    |           0.308 |         0.109 |
+| control     |           0.67  |         0.121 |
+
+```r
+pdat <- mixed_data("beta")
+
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  severity_beta <- mixed_beta(
+    severity ~ treatment + (1 | block),
+    data = pdat,
+    link = "logit"
+  )
+}
+```
+
+Important rule: `mixed_beta()` deliberately rejects values equal to 0 or 1. Do not silently squeeze boundary values into the open interval. If boundaries occur, select a scientifically appropriate boundary-capable model.
+
+---
+
+## 14. Repeated measurements: random effects are not the whole dependence structure
+
+Random intercepts and slopes model heterogeneity among subjects. Residual covariance models dependence that remains among observations from the same subject after the random effects and fixed effects are accounted for.
+
+These are related but different components.
+
+### 14.1 Discrete AR(1)
+
+```r
+if (requireNamespace("nlme", quietly = TRUE)) {
+  ar1_fit <- mixed_ar1(
+    data     = z,
+    response = "height",
+    fixed    = "treatment * time",
+    time     = "time",
+    group    = "subject",
+    engine   = "nlme"
+  )
+}
+```
+
+### 14.2 Continuous-time AR(1) for irregular timing
+
+```r
+z_irregular <- z[
+  !(z$subject == "S01" & z$time == 2),
+]
+
+if (requireNamespace("nlme", quietly = TRUE)) {
+  car1_fit <- mixed_car1(
+    data     = z_irregular,
+    response = "height",
+    fixed    = "treatment * time",
+    time     = "time",
+    group    = "subject"
+  )
+}
+```
+
+### 14.3 Heterogeneous residual variances
+
+```r
+if (requireNamespace("nlme", quietly = TRUE)) {
+  hetero_fit <- mixed_heterogeneity(
+    height ~ treatment * time,
+    data           = z,
+    random         = ~ time | subject,
+    variance_group = "treatment"
+  )
+}
+```
+
+### 14.4 Toeplitz structure
+
+```r
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  toep_fit <- mixed_toeplitz(
+    data     = z,
+    response = "height",
+    fixed    = "treatment * time",
+    time     = "time",
+    group    = "subject"
+  )
+}
+```
+
+### 14.5 Compare plausible covariance candidates
+
+```r
+if (exists("ar1_fit") && exists("car1_fit")) {
+  covariance_table <- mixed_covariance_compare(
+    AR1  = ar1_fit,
+    CAR1 = car1_fit
+  )
+
+  covariance_table
+}
+```
+
+### Interpretation
+
+Use covariance structures that have a design or process interpretation.
+
+- AR(1): equally spaced visits where correlation decays by lag.
+- CAR(1): irregularly spaced time, where correlation decays continuously with distance in time.
+- Heterogeneous variance: treatment groups or occasions differ in residual variability.
+- Toeplitz: correlations can vary by lag without forcing a single exponential-decay parameter.
+
+Prefer a simpler scientifically plausible structure when additional complexity is weakly supported or poorly estimated.
+
+---
+
+# Part III. Sensitivity and uncertainty
+
+## 15. Robust mixed models: a sensitivity analysis, not an outlier deletion machine
+
+Create a deliberately contaminated teaching copy:
+
+```r
+z_cont <- z
+z_cont$height[1] <- z_cont$height[1] + 30
+```
+
+Classical fit:
+
+```r
+if (requireNamespace("lme4", quietly = TRUE)) {
+  classical_cont <- mixed_fit(
+    height ~ treatment * time + (1 | subject),
+    data = z_cont
+  )
+}
+```
+
+Robust fit:
+
+```r
+if (requireNamespace("robustlmm", quietly = TRUE)) {
+  robust_cont <- mixed_robust(
+    height ~ treatment * time + (1 | subject),
+    data = z_cont
+  )
+}
+```
+
+Compare estimates:
+
+```r
+if (exists("classical_cont") && exists("robust_cont")) {
+  sensitivity <- mixed_compare_robust(
+    classical = classical_cont,
+    robust    = robust_cont
+  )
+
+  sensitivity
+}
+```
+
+Flag clusters for review:
+
+```r
+if (exists("robust_cont")) {
+  mixed_robust_influence(
+    robust_cont,
+    cluster = "subject"
+  )
+}
+```
+
+Contamination screen:
+
+```r
+if (exists("classical_cont")) {
+  mixed_contamination(
+    classical_cont,
+    cluster   = "subject",
+    threshold = 2.5
+  )
+}
+```
+
+Cluster-robust covariance:
+
+```r
+if (
+  exists("classical_cont") &&
+  requireNamespace("clubSandwich", quietly = TRUE)
+) {
+  V_CR2 <- mixed_robust_vcov(
+    classical_cont,
+    cluster = "subject",
+    type    = "CR2"
+  )
+
+  V_CR2
+}
+```
+
+### Interpretation
+
+A material shift between classical and robust estimates means the conclusion is sensitive to influential information. It does not prove that the influential observation is erroneous.
+
+The scientific workflow is to identify the observation or cluster, check data provenance, understand why it is influential, report sensitivity, and exclude data only with a documented scientific or data-quality justification.
+
+---
+
+## 16. Bootstrap inference for fixed effects, variance components, and predictions
+
+### 16.1 Teaching-scale bootstrap
+
+Use a small `B` only while learning the syntax.
+
+```r
+if (requireNamespace("lme4", quietly = TRUE)) {
+  boot_fit <- mixed_fit(
+    height ~ treatment * time + (1 | subject),
+    data = z
+  )
+
+  boot_fixed_demo <- mixed_boot_fixed(
+    boot_fit,
+    B = 50,
+    seed = 260818
+  )
+}
+```
+
+### 16.2 Analysis-scale bootstrap
+
+```r
+if (exists("boot_fit")) {
+  boot_fixed <- mixed_boot_fixed(
+    boot_fit,
+    B = 1999,
+    level = 0.95,
+    seed = 260818
+  )
+
+  mixed_table(
+    boot_fixed,
+    component = "bootstrap"
+  )
+}
+```
+
+Variance components:
+
+```r
+if (exists("boot_fit")) {
+  boot_var <- mixed_boot_variance(
+    boot_fit,
+    B = 1999,
+    seed = 260818
+  )
+}
+```
+
+Prediction uncertainty:
+
+```r
+new_height <- data.frame(
+  treatment = factor(c("T1", "T2"), levels = levels(z$treatment)),
+  time = c(5, 5),
+  subject = z$subject[1]
+)
+
+if (exists("boot_fit")) {
+  pred_boot <- mixed_boot_predict(
+    boot_fit,
+    newdata = new_height,
+    B = 999,
+    re.form = NA,
+    seed = 260818
+  )
+
+  pred_boot
+}
+```
+
+BCa when supported:
+
+```r
+if (
+  exists("boot_fit") &&
+  requireNamespace("confintROB", quietly = TRUE)
+) {
+  bca <- mixed_boot(
+    boot_fit,
+    statistic = "fixed",
+    B         = 1999,
+    method    = "parametric",
+    interval  = "BCa",
+    cluster   = "subject",
+    seed      = 260818
+  )
+}
+```
+
+### Interpretation
+
+Bootstrap intervals are especially useful when uncertainty is not well represented by a simple symmetric Wald approximation. Distinguish uncertainty in fixed effects, variance components, and predictions, because these answer different questions.
+
+---
+
+# Part IV. Distributional and Bayesian extensions
+
+## 17. Mixed GAMLSS: model more than the mean
+
+A standard Gaussian mixed model commonly models the conditional mean while treating residual scale as constant. A GAMLSS can allow covariates to influence additional distributional parameters when scientifically justified.
+
+### 17.1 Baseline location model with a subject random effect
+
+```r
+if (requireNamespace("gamlss", quietly = TRUE)) {
+  g1 <- mixed_gamlss(
+    height ~ treatment * time,
+    data   = z,
+    family = "NO",
+    random = "subject"
+  )
+}
+```
+
+### 17.2 Let treatment explain residual scale
+
+```r
+if (requireNamespace("gamlss", quietly = TRUE)) {
+  g2 <- mixed_gamlss(
+    height ~ treatment * time,
+    data          = z,
+    family        = "NO",
+    sigma.formula = ~ treatment,
+    random        = "subject"
+  )
+}
+```
+
+### 17.3 Inspect modeled parameters
+
+```r
+if (exists("g2")) {
+  pars <- mixed_gamlss_parameters(
+    g2,
+    parameters = c("mu", "sigma")
+  )
+
+  head(pars)
+}
+```
+
+Compare candidates:
+
+```r
+if (exists("g1") && exists("g2")) {
+  mixed_gamlss_select(
+    mean_only = g1,
+    scale_by_treatment = g2
+  )
+}
+```
+
+Conditional quantiles:
+
+```r
+if (
+  exists("g2") &&
+  requireNamespace("gamlss.dist", quietly = TRUE)
+) {
+  q_gamlss <- mixed_gamlss_quantiles(
+    g2,
+    probs = c(0.10, 0.50, 0.90)
+  )
+
+  head(q_gamlss)
+}
+```
+
+Diagnostics:
+
+```r
+if (exists("g2")) {
+  gd <- mixed_gamlss_diagnose(g2)
+  gd$summary
+  gd$plot
+}
+```
+
+### Interpretation
+
+A scale model is useful when variability itself is scientifically meaningful. For example, a treatment may increase mean plant height but also increase conditional variability.
+
+Do not add `sigma`, `nu`, or `tau` predictors merely because the software permits them. Each distributional submodel needs a scientific rationale and adequate information.
+
+---
+
+## 18. Bayesian multilevel workflow
+
+Bayesian modeling is presented here as a complete workflow, not simply as a different way to obtain intervals.
+
+### 18.1 Inspect prior classes before choosing priors
+
+```r
+if (requireNamespace("brms", quietly = TRUE)) {
+  prior_classes <- mixed_prior(
+    height ~ treatment * time + (time | subject),
+    data = z
+  )
+
+  prior_classes
+}
+```
+
+### 18.2 Prior predictive checking
+
+A real analysis should define explicit priors before this step.
+
+```r
+if (requireNamespace("brms", quietly = TRUE)) {
+  prior_pred <- mixed_prior_predictive(
+    height ~ treatment * time + (time | subject),
+    data   = z,
+    chains = 2,
+    iter   = 1000,
+    seed   = 260818
+  )
+}
+```
+
+### 18.3 Posterior fit
+
+```r
+if (requireNamespace("brms", quietly = TRUE)) {
+  bayes_fit <- mixed_bayes(
+    height ~ treatment * time + (time | subject),
+    data   = z,
+    chains = 4,
+    iter   = 4000,
+    seed   = 260818
+  )
+}
+```
+
+Posterior draws:
+
+```r
+if (exists("bayes_fit")) {
+  draws <- mixed_posterior(bayes_fit)
+  draws
+}
+```
+
+Posterior predictive check:
+
+```r
+if (exists("bayes_fit")) {
+  mixed_pp_check(
+    bayes_fit,
+    type = "dens_overlay",
+    ndraws = 100
+  )
+}
+```
+
+Predictive comparison:
+
+```r
+if (exists("bayes_fit")) {
+  loo_bayes <- mixed_loo(bayes_fit)
+  loo_bayes
+}
+```
+
+### Interpretation
+
+A good Bayesian analysis reports prior rationale, prior predictive behavior, convergence diagnostics, posterior intervals, direct probability statements when scientifically useful, posterior predictive adequacy, and sensitivity to consequential prior assumptions.
+
+A 95% credible interval and a 95% frequentist confidence interval are not interchangeable statements.
+
+---
+
+# Part V. Nonlinear biological response
+
+## 19. Growth curves
+
+The `growth` data contain simulated logistic biomass trajectories.
+
+```r
+gdat <- mixed_data("growth")
+
+with(
+  gdat,
+  tapply(biomass, list(treatment, time), mean)
+)
+```
+
+Fit a logistic growth mixed model:
+
+```r
+if (requireNamespace("nlme", quietly = TRUE)) {
+  growth_fit <- mixed_growth(
+    data     = gdat,
+    response = "biomass",
+    time     = "time",
+    group    = "plant",
+    model    = "logistic"
+  )
+}
+```
+
+Alternative Gompertz model:
+
+```r
+if (requireNamespace("nlme", quietly = TRUE)) {
+  growth_gomp <- mixed_growth(
+    data     = gdat,
+    response = "biomass",
+    time     = "time",
+    group    = "plant",
+    model    = "gompertz"
+  )
+}
+```
+
+### Interpretation
+
+For growth curves, scientific targets are often model parameters or derived quantities rather than a single treatment p-value. Ask what the asymptote means, how rapidly it is approached, whether inflection timing differs, which parameters vary among plants, and whether estimated parameters are biologically plausible.
+
+---
+
+## 20. Dose-response mixed models
+
+Observed dose-response summaries:
+
+|   dose |   observed_mean |   observed_sd |
+|-------:|----------------:|--------------:|
+|      0 |           22.08 |          2.83 |
+|     10 |           25.33 |          2.49 |
+|     25 |           34.47 |          2.55 |
+|     50 |           54.75 |          2.73 |
+|    100 |           80.07 |          2.14 |
+|    200 |           82.35 |          2.46 |
+
+```r
+ddat <- mixed_data("dose_response")
+
+if (requireNamespace("nlme", quietly = TRUE)) {
+  dose_fit <- mixed_dose_response(
+    data     = ddat,
+    response = "response",
+    dose     = "dose",
+    group    = "unit"
+  )
+}
+```
+
+### Interpretation
+
+The descriptive means increase strongly from dose 0 to 100 and then change little between 100 and 200 in the frozen dataset. A nonlinear dose-response model can express that saturation directly and estimate scientifically meaningful curve parameters.
+
+Do not infer an optimum by extrapolating beyond the experimental dose range without independent justification.
+
+---
+
+## 21. Random regression curves
+
+When trajectories differ among experimental units and a simple random linear slope is insufficient:
+
+```r
+if (requireNamespace("lme4", quietly = TRUE)) {
+  rr <- mixed_random_curve(
+    response = "height",
+    time     = "time",
+    data     = z,
+    group    = "subject",
+    degree   = 2,
+    fixed    = "treatment"
+  )
+}
+```
+
+This creates a structured progression from random intercepts to random slopes and then to unit-specific polynomial trajectories.
+
+---
+
+# Part VI. Spatial field trials and multi-environment experiments
+
+## 22. Spatial field trial
+
+The spatial dataset covers a `12 x 18` field grid and includes genotype and block effects.
+
+The five largest raw genotype means are:
+
+| genotype   |   Observed mean yield |
+|:-----------|----------------------:|
+| G07        |                 72.06 |
+| G01        |                 70.6  |
+| G03        |                 70.58 |
+| G06        |                 69.08 |
+| G12        |                 68.05 |
+
+These raw means are useful for reconnaissance only. They may contain spatial trend.
+
+### 22.1 Direct spatial covariance with glmmTMB
+
+```r
+sdat <- mixed_data("spatial")
+
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  spatial_exp <- mixed_spatial_covariance(
+    data      = sdat,
+    response  = "yield",
+    fixed     = "genotype + block",
+    x         = "col",
+    y         = "row",
+    structure = "exp"
+  )
+}
+```
+
+Gaussian spatial covariance:
+
+```r
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  spatial_gau <- mixed_spatial_covariance(
+    data      = sdat,
+    response  = "yield",
+    fixed     = "genotype + block",
+    x         = "col",
+    y         = "row",
+    structure = "gau"
+  )
+}
+```
+
+### 22.2 P-spline field correction with SpATS
+
+```r
+if (requireNamespace("SpATS", quietly = TRUE)) {
+  spats_fit <- mixed_spatial_field(
+    data      = sdat,
+    response  = "yield",
+    genotype  = "genotype",
+    col       = "col",
+    row       = "row",
+    random    = ~ block,
+    nseg      = c(6, 6)
+  )
+}
+```
+
+Extract the spatial surface:
+
+```r
+if (exists("spats_fit")) {
+  surf <- mixed_spatial_surface(
+    spats_fit,
+    grid = c(50, 50)
+  )
+
+  surf$plot
+}
+```
+
+The same figure can be requested through the publication layer:
+
+```r
+if (exists("spats_fit")) {
+  mixed_plot(
+    spats_fit,
+    type = "spatial"
+  )
+}
+```
+
+### Interpretation
+
+A spatial correction is not a cosmetic smoothing step. Its purpose is to separate treatment or genotype signal from systematic field variation.
+
+Compare the raw field map, fitted spatial trend, residual spatial pattern, and genotype estimates before and after adjustment. A spatial surface that absorbs treatment layout because design and spatial terms are confounded is not an improvement.
+
+---
+
+## 23. Multi-environment trials and GxE
+
+Observed environment means:
+
+| environment   |   Observed mean yield |
+|:--------------|----------------------:|
+| E1            |                 43.72 |
+| E2            |                 49.04 |
+| E3            |                 53.26 |
+| E4            |                 56.02 |
+
+The environment effect is large in the teaching data, but MET analysis is primarily concerned with genotype performance and genotype by environment structure.
+
+### 23.1 Baseline MET model
+
+```r
+mdat <- mixed_data("met")
+
+if (requireNamespace("sommer", quietly = TRUE)) {
+  met_fit <- mixed_met(
+    fixed  = yield ~ environment,
+    random = ~ genotype,
+    data   = mdat
+  )
+}
+```
+
+### 23.2 GxE covariance structures
+
+Diagonal:
+
+```r
+if (requireNamespace("sommer", quietly = TRUE)) {
+  gxe_diag <- mixed_gxe(
+    data        = mdat,
+    response    = "yield",
+    genotype    = "genotype",
+    environment = "environment",
+    model       = "diagonal"
+  )
+}
+```
+
+Unstructured:
+
+```r
+if (requireNamespace("sommer", quietly = TRUE)) {
+  gxe_us <- mixed_gxe(
+    data        = mdat,
+    response    = "yield",
+    genotype    = "genotype",
+    environment = "environment",
+    model       = "unstructured"
+  )
+}
+```
+
+Reduced-rank factor analytic:
+
+```r
+if (requireNamespace("sommer", quietly = TRUE)) {
+  gxe_fa <- mixed_gxe(
+    data        = mdat,
+    response    = "yield",
+    genotype    = "genotype",
+    environment = "environment",
+    model       = "fa",
+    nPC         = 2
+  )
+}
+```
+
+### Interpretation
+
+The progression should be: confirm genotype-environment replication, inspect environment means and variances, fit a defensible baseline GxE structure, add covariance flexibility only when data support it, interpret borrowing of information and stability across environments, and avoid using a single overall genotype mean as the whole MET conclusion.
+
+---
+
+# Part VII. Diagnostics, comparison, and publication outputs
+
+## 24. A diagnostic checklist that should precede biological conclusions
+
+For a concrete publication example, first fit the longitudinal model used in this section:
+
+```r
+z <- mixed_data("longitudinal")
+
+if (requireNamespace("lme4", quietly = TRUE)) {
+  pub_fit <- mixed_fit(
+    height ~ treatment * time + (time | subject),
+    data = z
+  )
+}
+```
+
+Then diagnose it:
+
+```r
+if (exists("pub_fit")) {
+  diag <- mixed_diagnose(pub_fit)
+  diag
+}
+```
+
+| Diagnostic domain | Question |
+|---|---|
+| Convergence | Did the optimizer reach a valid solution? |
+| Singularity | Is the random structure estimable with the available information? |
+| Residual pattern | Is there remaining mean structure or nonlinearity? |
+| Heteroscedasticity | Does residual variance change by treatment, time, or fitted value? |
+| Temporal/spatial dependence | Is important dependence left unexplained? |
+| Distribution | Is the chosen response family plausible? |
+| Overdispersion | Is Poisson variability too restrictive? |
+| Zero inflation | Is a distinct zero process supported? |
+| Influence | Are conclusions driven by one observation or cluster? |
+| Prediction | Does the model reproduce scientifically relevant data features? |
+
+A clean residual figure:
+
+```r
+mixed_plot(
+  pub_fit,
+  type = "residuals"
+)
+```
+
+Influence by cluster:
+
+```r
+if (requireNamespace("influence.ME", quietly = TRUE)) {
+  infl <- mixed_influence(
+    pub_fit,
+    group = "subject"
+  )
+}
+```
+
+---
+
+## 25. Model comparison with safeguards
+
+### 25.1 Information criteria as descriptors
+
+```r
+if (requireNamespace("lme4", quietly = TRUE)) {
+  m0 <- mixed_fit(
+    height ~ time + (1 | subject),
+    data = z,
+    REML = FALSE
+  )
+
+  m1 <- mixed_fit(
+    height ~ treatment + time + (1 | subject),
+    data = z,
+    REML = FALSE
+  )
+
+  mixed_compare(
+    simple = m0,
+    treatment = m1,
+    method = "information"
+  )
+}
+```
+
+### 25.2 Likelihood-ratio test under ML
+
+```r
+if (exists("m0") && exists("m1")) {
+  mixed_compare(
+    m0,
+    m1,
+    method = "LRT"
+  )
+}
+```
+
+The package blocks an LRT of different fixed-effect structures when an `lmer` model remains fitted by REML.
+
+### 25.3 Kenward-Roger comparison
+
+```r
+if (
+  requireNamespace("lme4", quietly = TRUE) &&
+  requireNamespace("pbkrtest", quietly = TRUE)
+) {
+  kr_small <- mixed_fit(
+    height ~ time + (1 | subject),
+    data = z
+  )
+
+  kr_large <- mixed_fit(
+    height ~ treatment + time + (1 | subject),
+    data = z
+  )
+
+  mixed_compare(
+    kr_small,
+    kr_large,
+    method = "Kenward-Roger"
+  )
+}
+```
+
+### 25.4 Parametric-bootstrap comparison
+
+```r
+if (
+  exists("kr_small") &&
+  exists("kr_large") &&
+  requireNamespace("pbkrtest", quietly = TRUE)
+) {
+  mixed_compare(
+    kr_small,
+    kr_large,
+    method = "parametric-bootstrap",
+    nsim   = 1999,
+    seed   = 260818
+  )
+}
+```
+
+### Interpretation
+
+Do not select a model from a leaderboard. Use comparison methods to answer a stated modeling question: whether an added effect is needed, whether a richer covariance structure is justified, whether a distributional extension resolves a diagnostic problem, whether prediction improves meaningfully, and whether scientific conclusions remain stable across defensible candidates.
+
+---
+
+## 26. Publication-ready tables
+
+Fixed effects:
+
+```r
+mixed_table(
+  pub_fit,
+  component = "fixed",
+  format    = "markdown",
+  digits    = 3,
+  caption   = "Fixed-effect estimates"
+)
+```
+
+Random effects:
+
+```r
+mixed_table(
+  pub_fit,
+  component = "random",
+  format    = "markdown",
+  digits    = 3,
+  caption   = "Random-effect variance components"
+)
+```
+
+Estimated marginal means:
+
+```r
+mixed_table(
+  pub_fit,
+  component = "emmeans",
+  format    = "markdown",
+  specs     = ~ treatment,
+  caption   = "Estimated marginal means"
+)
+```
+
+Word-ready table when `flextable` is installed:
+
+```r
+if (requireNamespace("flextable", quietly = TRUE)) {
+  ft <- mixed_table(
+    pub_fit,
+    component = "fixed",
+    format    = "flextable",
+    digits    = 3,
+    caption   = "Fixed-effect estimates"
+  )
+
+  ft
+}
+```
+
+The numerical data frame is the authoritative object. Rendering does not alter estimates.
+
+---
+
+## 27. Publication-ready figures
+
+### 27.1 Raw observations
+
+```r
+mixed_plot(
+  pub_fit,
+  type = "raw",
+  x    = "time",
+  by   = "treatment"
+)
+```
+
+### 27.2 Fixed effects with Wald intervals
+
+```r
+mixed_plot(
+  pub_fit,
+  type = "fixed"
+)
+```
+
+### 27.3 Random effects
+
+```r
+mixed_plot(
+  pub_fit,
+  type = "random"
+)
+```
+
+### 27.4 Response curve with observed data and uncertainty
+
+```r
+mixed_plot(
+  pub_fit,
+  type      = "curve",
+  x         = "time",
+  by        = "treatment",
+  values    = seq(0, 5, by = 0.1),
+  show_data = TRUE
+)
+```
+
+### 27.5 Export
+
+```r
+mixed_plot(
+  pub_fit,
+  type   = "residuals",
+  file   = "mixed_model_residuals.tiff",
+  width  = 7,
+  height = 5,
+  dpi    = 600
+)
+```
+
+Vector output:
+
+```r
+mixed_plot(
+  pub_fit,
+  type   = "fixed",
+  file   = "fixed_effects.svg",
+  width  = 7,
+  height = 5
+)
+```
+
+### Figure principles
+
+1. Show observed data when they can be displayed without obscuring the model result.
+2. Show uncertainty around estimates.
+3. Avoid isolated bar charts for continuous responses when observations or distributions can be shown.
+4. Use axes and scales that do not exaggerate effects.
+5. Distinguish raw observations, fitted conditional values, population estimates, and predictions.
+6. Report whether intervals are Wald, bootstrap, profile, or posterior intervals.
+
+---
+
+## 28. Generate a reproducible report skeleton
+
+```r
+mixed_report(
+  pub_fit,
+  file  = "mixedFlowR_analysis.md",
+  title = "Agronomic mixed-model analysis"
+)
+```
+
+The generated report skeleton reminds the analyst to document experimental units and randomization, convergence and singularity, residual dependence and distribution, estimates and uncertainty, scientifically relevant contrasts, observed-data figures, and package versions, seeds, and sensitivity analyses.
+
+---
+
+# Part VIII. Two integrated workflows
+
+## 29. Basic integrated workflow: split-plot with quantitative nitrogen
+
+This is the recommended first complete analysis for a new user.
+
+### Step 1: data and design
+
+```r
+d <- mixed_data("splitplot")
+
+audit <- mixed_design_audit(
+  d,
+  response = "yield",
+  block    = "block",
+  whole    = "variety",
+  sub      = "nitrogen"
+)
+```
+
+### Step 2: classical design check
+
+```r
+legacy <- fit_legacy_splitplot(
+  d,
+  "yield",
+  "block",
+  "variety",
+  "nitrogen"
+)
+
+splitplot_anova(legacy)
+```
+
+### Step 3: mixed model for the hierarchy
+
+```r
+fit <- mixed_fit(
+  yield ~ variety * nitrogen +
+    (1 | block) +
+    (1 | block:variety),
+  data = d
+)
+```
+
+### Step 4: diagnostics
+
+```r
+diag <- mixed_diagnose(fit)
+diag
+
+mixed_plot(
+  fit,
+  "residuals"
+)
+```
+
+### Step 5: omnibus inference
+
+```r
+mixed_anova(
+  fit,
+  ddf = "Kenward-Roger"
+)
+```
+
+### Step 6: interpret variety qualitatively
+
+```r
+mixed_emmeans(
+  fit,
+  ~ variety
+)
+```
+
+### Step 7: interpret nitrogen quantitatively
+
+```r
+mixed_trend(
+  fit,
+  ~ variety,
+  var = "nitrogen"
+)
+```
+
+### Step 8: prediction curves
+
+```r
+curve <- mixed_curve(
+  fit,
+  "nitrogen",
+  seq(0, 150, by = 5),
+  by = "variety"
+)
+
+curve
+```
+
+```r
+mixed_plot(
+  fit,
+  type      = "curve",
+  x         = "nitrogen",
+  by        = "variety",
+  values    = seq(0, 150, by = 2.5),
+  show_data = TRUE
+)
+```
+
+### Step 9: tables
+
+```r
+mixed_table(
+  fit,
+  "fixed",
+  format = "markdown"
+)
+
+mixed_table(
+  fit,
+  "random",
+  format = "markdown"
+)
+```
+
+### Step 10: report
+
+```r
+mixed_report(
+  fit,
+  "splitplot_nitrogen_analysis.md",
+  "Variety by nitrogen split-plot analysis"
+)
+```
+
+### Basic interpretation template
+
+A concise interpretation should state how whole plots and subplots were randomized, whether the random whole-plot component was estimable, whether variety modifies the nitrogen response, the direction and shape of that response, estimates or trends with uncertainty, whether diagnostics support the model, and whether conclusions change under reasonable sensitivity analyses.
+
+---
+
+## 30. Advanced integrated workflow: repeated agronomic measurements
+
+This path illustrates how complexity is added only when needed.
+
+### Stage A: random intercept
+
+```r
+z <- mixed_data("longitudinal")
+
+m_ri <- mixed_random_intercepts(
+  z,
+  response = "height",
+  fixed    = "treatment * time",
+  group    = "subject"
+)
+```
+
+### Stage B: random slope
+
+```r
+m_rs <- mixed_random_slopes(
+  z,
+  response = "height",
+  fixed    = "treatment * time",
+  slope    = "time",
+  group    = "subject"
+)
+```
+
+### Stage C: residual serial correlation
+
+```r
+m_ar1 <- mixed_ar1(
+  z,
+  response = "height",
+  fixed    = "treatment * time",
+  time     = "time",
+  group    = "subject",
+  engine   = "nlme"
+)
+```
+
+### Stage D: heteroscedastic residuals
+
+```r
+m_het <- mixed_heterogeneity(
+  height ~ treatment * time,
+  data           = z,
+  random         = ~ time | subject,
+  variance_group = "treatment"
+)
+```
+
+### Stage E: robust sensitivity
+
+```r
+m_rob <- mixed_robust(
+  height ~ treatment * time + (1 | subject),
+  data = z
+)
+
+mixed_compare_robust(
+  m_ri,
+  m_rob
+)
+```
+
+### Stage F: bootstrap
+
+```r
+m_boot <- mixed_boot_fixed(
+  m_ri,
+  B    = 1999,
+  seed = 260818
+)
+```
+
+### Stage G: distributional scale model
+
+```r
+m_gamlss <- mixed_gamlss(
+  height ~ treatment * time,
+  data          = z,
+  family        = "NO",
+  sigma.formula = ~ treatment,
+  random        = "subject"
+)
+```
+
+### Stage H: Bayesian counterpart
+
+```r
+m_bayes <- mixed_bayes(
+  height ~ treatment * time + (time | subject),
+  data   = z,
+  chains = 4,
+  iter   = 4000,
+  seed   = 260818
+)
+```
+
+### Advanced interpretation template
+
+Do not report this as eight competing algorithms. Report it as a sequence of scientific questions:
+
+1. Do subjects differ in baseline height?
+2. Do subjects differ in growth rate?
+3. Is serial dependence left after subject heterogeneity is modeled?
+4. Does residual variability differ by treatment?
+5. Are fixed-effect conclusions sensitive to influential observations?
+6. Are small-sample or asymmetric intervals materially different?
+7. Is modeling residual scale scientifically informative?
+8. Do Bayesian predictive checks and posterior uncertainty tell the same substantive story?
+
+This question-driven framing is more informative than declaring a single "best model."
+
+---
+
+# Part IX. Teaching mode
+
+## 31. Use the guided tours
+
+The package includes conceptual teaching sequences.
+
+```r
+mixed_tour("splitplot")
+mixed_tour("random_effects")
+mixed_tour("covariance")
+mixed_tour("robust")
+mixed_tour("gamlss")
+mixed_tour("bayes")
+mixed_tour("spatial")
+mixed_tour("met")
+```
+
+Run the lightweight split-plot artifact:
+
+```r
+tour <- mixed_tour(
+  "splitplot",
+  run = TRUE
+)
+
+tour$steps
+tour$artifact
+```
+
+### Suggested classroom progression
+
+**Class 1:** experimental unit, randomization, split-plot strata.  
+**Class 2:** random intercepts, shrinkage, BLUPs.  
+**Class 3:** random slopes, nesting, crossing.  
+**Class 4:** GLMM distributions.  
+**Class 5:** repeated-measures covariance.  
+**Class 6:** quantitative treatments, curves, and optima.  
+**Class 7:** robust sensitivity and bootstrap.  
+**Class 8:** GAMLSS and Bayesian distributional thinking.  
+**Class 9:** spatial field trials and MET/GxE.  
+**Class 10:** diagnostics, communication, and reproducibility.
+
+---
+
+# Part X. Common mistakes and the corresponding functions
+
+## 32. Treating every quantitative dose as a factor
+
+Use a factor when levels are genuinely categorical treatments. Use trends or curves when the numeric scale carries scientific information.
+
+```r
+mixed_quantitative()
+mixed_trend()
+mixed_curve()
+mixed_optimum()
+```
+
+## 33. Ignoring the whole-plot error
+
+A split-plot is not an ordinary factorial experiment with a single residual error term.
+
+```r
+mixed_design_audit()
+fit_legacy_splitplot()
+splitplot_ems()
+compare_legacy_mixed()
+mixed_fit()
+```
+
+## 34. Adding random slopes without enough information
+
+A maximal random structure is not automatically the correct structure.
+
+```r
+mixed_random_slopes()
+mixed_diagnose()
+mixed_covariance_plot()
+mixed_compare()
+```
+
+## 35. Choosing covariance only by the smallest AIC
+
+Use information criteria as evidence about fit and parsimony, not as a substitute for the scientific process that generated dependence.
+
+```r
+mixed_covariance()
+mixed_ar1()
+mixed_car1()
+mixed_toeplitz()
+mixed_covariance_compare()
+```
+
+## 36. Calling influential observations "outliers" and deleting them
+
+Influence is a property of the fitted analysis, not a data-quality diagnosis.
+
+```r
+mixed_influence()
+mixed_robust_influence()
+mixed_contamination()
+mixed_compare_robust()
+mixed_robust_vcov()
+```
+
+## 37. Using a Poisson model for any count automatically
+
+Counts can be overdispersed, zero-inflated, clustered, or serially dependent.
+
+```r
+mixed_count()
+mixed_zero_inflated()
+mixed_diagnose()
+mixed_compare()
+```
+
+## 38. Interpreting non-significance as equality
+
+This applies especially to compact-letter displays.
+
+```r
+mixed_emmeans()
+mixed_contrasts()
+mixed_cld()
+```
+
+Report estimates and intervals alongside grouping letters.
+
+## 39. Ignoring diagnostics because the model converged
+
+Convergence is necessary, not sufficient.
+
+```r
+mixed_diagnose()
+mixed_influence()
+mixed_plot()
+mixed_pp_check()
+mixed_gamlss_diagnose()
+```
+
+## 40. Using advanced models without a scientific reason
+
+GAMLSS, Bayesian multilevel models, spatial smoothers, and factor-analytic GxE structures add flexibility. They also add assumptions, estimation burden, and interpretation requirements.
+
+```r
+mixed_gamlss()
+mixed_bayes()
+mixed_spatial_field()
+mixed_gxe()
+```
+
+Use complexity to solve a stated problem.
+
+---
+
+# Part XI. Compact function-selection guide
+
+| Scientific question | Start with | Escalate when needed |
+|---|---|---|
+| Is my split-plot design correctly encoded? | `mixed_design_audit()` | `fit_legacy_splitplot()`, `compare_legacy_mixed()` |
+| Do subjects or blocks vary in baseline? | `mixed_random_intercepts()` | `mixed_random_slopes()` |
+| Are random factors nested? | `mixed_nested()` | inspect with `mixed_hierarchy()` |
+| Are random factors crossed? | `mixed_crossed()` | MET/GxE modules |
+| Is the response non-Gaussian? | `mixed_glmm()` | `mixed_count()`, `mixed_beta()`, `mixed_zero_inflated()` |
+| Are repeated residuals correlated? | `mixed_ar1()` | `mixed_car1()`, `mixed_toeplitz()` |
+| Does residual variance differ by group? | `mixed_heterogeneity()` | GAMLSS scale model |
+| Are estimates sensitive to contamination? | `mixed_compare_robust()` | `mixed_contamination()`, `mixed_robust_vcov()` |
+| Are Wald intervals questionable? | `mixed_boot_fixed()` | BCa/wild bootstrap |
+| Do I need distributional parameters? | `mixed_gamlss()` | `mixed_gamlss_quantiles()` |
+| Do I need posterior probability statements? | `mixed_bayes()` | prior/PPC/LOO workflow |
+| Is treatment quantitative? | `mixed_trend()` | `mixed_curve()`, `mixed_optimum()` |
+| Is the biological response nonlinear? | `mixed_growth()` | `mixed_dose_response()`, `mixed_nonlinear()` |
+| Is there field spatial trend? | `mixed_spatial_covariance()` | `mixed_spatial_field()` |
+| Is genotype performance environment-dependent? | `mixed_met()` | `mixed_gxe()` |
+| How do I produce a scientific figure? | `mixed_plot()` | choose raw, curve, residual, random, covariance, bootstrap, spatial |
+| How do I produce a scientific table? | `mixed_table()` | Markdown, LaTeX, HTML, flextable |
+| How do I teach the concept? | `mixed_tour()` | corresponding focused vignette |
+
+---
+
+# Part XII. Minimum reporting checklist
+
+Before a result leaves the analysis notebook, thesis, report, or manuscript, document:
+
+- [ ] experimental units;
+- [ ] randomization and blocking;
+- [ ] repeated-measure or spatial dependence;
+- [ ] fixed-effect estimands;
+- [ ] random-effect structure;
+- [ ] response distribution and link, where applicable;
+- [ ] residual covariance and heterogeneity assumptions;
+- [ ] estimation method and backend;
+- [ ] convergence and singularity diagnostics;
+- [ ] residual diagnostics;
+- [ ] influence or sensitivity analysis when relevant;
+- [ ] method used for denominator degrees of freedom;
+- [ ] multiplicity adjustment for multiple contrasts;
+- [ ] interval type;
+- [ ] bootstrap replication count and seed, when used;
+- [ ] prior specification and predictive checks for Bayesian models;
+- [ ] GAMLSS distributional submodels, when used;
+- [ ] observed data shown with estimates where possible;
+- [ ] effect sizes or scientifically interpretable differences;
+- [ ] package versions and reproducibility information;
+- [ ] limits on extrapolation.
+
+---
+
+# Part XIII. Suggested next vignettes
+
+After this tutorial, use the focused package material in approximately this order:
+
+1. `v01-quick-start.Rmd`
+2. `v02-design-legacy-splitplot.Rmd`
+3. `v03-random-effects-and-shrinkage.Rmd`
+4. `v04-glmm-distributions.Rmd`
+5. `v05-residual-covariance.Rmd`
+6. `v10-qualitative-quantitative.Rmd`
+7. `v14-diagnostics-comparison.Rmd`
+8. `v07-bootstrap-inference.Rmd`
+9. `v06-robust-sensitivity.Rmd`
+10. `v08-gamlss-mixed.Rmd`
+11. `v09-bayesian-multilevel.Rmd`
+12. `v11-nonlinear-random-regression.Rmd`
+13. `v12-spatial-field-trials.Rmd`
+14. `v13-met-gxe.Rmd`
+15. `v15-publication-output.Rmd`
+16. `v16-teaching-tour.Rmd`
+17. `v17-state-of-the-art.Rmd`
+18. `v18-validation-reproducibility.Rmd`
+19. `v19-complete-agronomic-workflow.Rmd`
+20. `v20-api-example-catalog.Rmd`
+
+---
+
+# Appendix A. Complete 70-block registry
+
+|   Block | Module                         | Primary function         | Status      |
+|--------:|:-------------------------------|:-------------------------|:------------|
+|       1 | Design audit                   | mixed_design_audit       | implemented |
+|       2 | Experimental hierarchy         | mixed_hierarchy          | implemented |
+|       3 | Balance and cell support       | mixed_balance            | implemented |
+|       4 | Pseudoreplication screen       | mixed_pseudorep          | implemented |
+|       5 | Legacy split-plot fit          | fit_legacy_splitplot     | implemented |
+|       6 | Expected mean squares          | splitplot_ems            | implemented |
+|       7 | Legacy ANOVA extraction        | splitplot_anova          | implemented |
+|       8 | Legacy-to-mixed comparison     | compare_legacy_mixed     | implemented |
+|       9 | Split-split plot               | fit_legacy_splitsplit    | implemented |
+|      10 | Strip-plot                     | fit_legacy_stripplot     | implemented |
+|      11 | General mixed fit              | mixed_fit                | implemented |
+|      12 | Random intercepts              | mixed_random_intercepts  | implemented |
+|      13 | Random slopes                  | mixed_random_slopes      | implemented |
+|      14 | Nested effects                 | mixed_nested             | implemented |
+|      15 | Crossed effects                | mixed_crossed            | implemented |
+|      16 | BLUP extraction                | mixed_blup               | implemented |
+|      17 | General GLMM                   | mixed_glmm               | implemented |
+|      18 | Binomial GLMM                  | mixed_binomial           | implemented |
+|      19 | Count GLMM                     | mixed_count              | implemented |
+|      20 | Beta mixed model               | mixed_beta               | implemented |
+|      21 | Zero-inflated mixed model      | mixed_zero_inflated      | implemented |
+|      22 | Covariance specification       | mixed_covariance         | implemented |
+|      23 | Residual heterogeneity         | mixed_heterogeneity      | implemented |
+|      24 | Discrete AR1                   | mixed_ar1                | implemented |
+|      25 | Continuous AR1                 | mixed_car1               | implemented |
+|      26 | Toeplitz/structured covariance | mixed_toeplitz           | implemented |
+|      27 | Covariance-model comparison    | mixed_covariance_compare | implemented |
+|      28 | Spatiotemporal mixed model     | mixed_spatiotemporal     | implemented |
+|      29 | Spatial covariance model       | mixed_spatial_covariance | implemented |
+|      30 | Temporal prediction grid       | mixed_temporal_grid      | implemented |
+|      31 | Covariance visualization       | mixed_covariance_plot    | implemented |
+|      32 | Robust LMM                     | mixed_robust             | implemented |
+|      33 | Robust influence screen        | mixed_robust_influence   | implemented |
+|      34 | Classical-robust comparison    | mixed_compare_robust     | implemented |
+|      35 | Contamination sensitivity      | mixed_contamination      | implemented |
+|      36 | Cluster-robust covariance      | mixed_robust_vcov        | implemented |
+|      37 | Bootstrap engine               | mixed_boot               | implemented |
+|      38 | Fixed-effect bootstrap         | mixed_boot_fixed         | implemented |
+|      39 | Variance-component bootstrap   | mixed_boot_variance      | implemented |
+|      40 | Prediction bootstrap           | mixed_boot_predict       | implemented |
+|      41 | Mixed GAMLSS                   | mixed_gamlss             | implemented |
+|      42 | GAMLSS parameter extraction    | mixed_gamlss_parameters  | implemented |
+|      43 | GAMLSS comparison/selection    | mixed_gamlss_select      | implemented |
+|      44 | GAMLSS conditional quantiles   | mixed_gamlss_quantiles   | implemented |
+|      45 | GAMLSS diagnostics             | mixed_gamlss_diagnose    | implemented |
+|      46 | Bayesian multilevel fit        | mixed_bayes              | implemented |
+|      47 | Prior inspection               | mixed_prior              | implemented |
+|      48 | Prior predictive analysis      | mixed_prior_predictive   | implemented |
+|      49 | Posterior draws                | mixed_posterior          | implemented |
+|      50 | Posterior predictive checking  | mixed_pp_check           | implemented |
+|      51 | Bayesian predictive comparison | mixed_loo                | implemented |
+|      52 | Estimated marginal means       | mixed_emmeans            | implemented |
+|      53 | Contrasts                      | mixed_contrasts          | implemented |
+|      54 | Compact letter display         | mixed_cld                | implemented |
+|      55 | Quantitative trends            | mixed_trend              | implemented |
+|      56 | Prediction curves              | mixed_curve              | implemented |
+|      57 | Nonlinear mixed model          | mixed_nonlinear          | implemented |
+|      58 | Growth curves                  | mixed_growth             | implemented |
+|      59 | Dose response                  | mixed_dose_response      | implemented |
+|      60 | Random regression curves       | mixed_random_curve       | implemented |
+|      61 | Spatial field trials           | mixed_spatial_field      | implemented |
+|      62 | Spatial surface extraction     | mixed_spatial_surface    | implemented |
+|      63 | Multi-environment trials       | mixed_met                | implemented |
+|      64 | GxE/reduced-rank models        | mixed_gxe                | implemented |
+|      65 | Diagnostics                    | mixed_diagnose           | implemented |
+|      66 | Influence                      | mixed_influence          | implemented |
+|      67 | Model comparison               | mixed_compare            | implemented |
+|      68 | Publication tables             | mixed_table              | implemented |
+|      69 | Publication plots              | mixed_plot               | implemented |
+|      70 | Guided teaching tour           | mixed_tour               | implemented |
+
+---
+
+# Appendix B. A single starter script
+
+The following script is intentionally compact. It is suitable as the first file a new user creates after installing `mixedFlowR`.
+
+```r
+library(mixedFlowR)
+
+# 1. Inspect capabilities.
+mixed_capabilities()
+
+# 2. Load a teaching dataset.
+d <- mixed_data("splitplot")
+
+# 3. Audit the design.
+audit <- mixed_design_audit(
+  d,
+  response = "yield",
+  block    = "block",
+  whole    = "variety",
+  sub      = "nitrogen"
+)
+audit
+
+# 4. Classical split-plot representation.
+legacy <- fit_legacy_splitplot(
+  d,
+  "yield",
+  "block",
+  "variety",
+  "nitrogen"
+)
+splitplot_anova(legacy)
+
+# 5. Modern mixed representation.
+if (requireNamespace("lme4", quietly = TRUE)) {
+  fit <- mixed_fit(
+    yield ~ variety * nitrogen +
+      (1 | block) +
+      (1 | block:variety),
+    data = d
+  )
+
+  # 6. Diagnose.
+  diag <- mixed_diagnose(fit)
+  print(diag)
+
+  # 7. Infer.
+  if (
+    requireNamespace("lmerTest", quietly = TRUE) &&
+    requireNamespace("pbkrtest", quietly = TRUE)
+  ) {
+    print(
+      mixed_anova(
+        fit,
+        ddf = "Kenward-Roger"
+      )
+    )
+  }
+
+  # 8. Quantitative treatment.
+  if (requireNamespace("emmeans", quietly = TRUE)) {
+    print(
+      mixed_trend(
+        fit,
+        ~ variety,
+        var = "nitrogen"
+      )
+    )
+
+    print(
+      mixed_plot(
+        fit,
+        type      = "curve",
+        x         = "nitrogen",
+        by        = "variety",
+        values    = seq(0, 150, by = 2.5),
+        show_data = TRUE
+      )
+    )
+  }
+
+  # 9. Scientific output.
+  print(
+    mixed_table(
+      fit,
+      component = "fixed"
+    )
+  )
+
+  mixed_report(
+    fit,
+    "starter_mixedflowr_report.md",
+    "Starter mixedFlowR analysis"
+  )
+}
+```
+
+---
+
+# Final perspective
+
+A mixed-model workflow is strongest when the model can be explained as a consequence of the experiment.
+
+For a beginner, the recommended sequence is:
+
+**design audit -> legacy design logic -> mixed fit -> diagnostics -> inference -> trends/contrasts -> figures/tables -> report.**
+
+For an advanced user, the sequence becomes:
+
+**design audit -> hierarchical model -> distribution and covariance -> diagnostics -> sensitivity/bootstrap -> distributional or Bayesian extension if justified -> spatial/MET structure if required -> publication and reproducibility.**
+
+The 70 blocks are therefore not 70 unrelated tools. They form one progressive analysis grammar. The purpose of `mixedFlowR` is to keep that grammar visible while allowing the analyst to move from a textbook split-plot to modern hierarchical, distributional, Bayesian, spatial, and multi-environment models without disconnecting the analysis from the experimental design.
+
+# Where to go next: the five instructional blocks
+
+**Block 1 - Foundations and core mixed models**
+
+1. `v01-quick-start.Rmd`
+2. `v02-design-legacy-splitplot.Rmd`
+3. `v03-random-effects-and-shrinkage.Rmd`
+4. `v04-glmm-distributions.Rmd`
+
+**Block 2 - Dependence, quantitative effects, diagnostics and robustness**
+
+5. `v05-residual-covariance.Rmd`
+6. `v10-qualitative-quantitative.Rmd`
+7. `v14-diagnostics-comparison.Rmd`
+8. `v06-robust-sensitivity.Rmd`
+
+**Block 3 - Advanced inference and distributional modelling**
+
+9. `v07-bootstrap-inference.Rmd`
+10. `v08-gamlss-mixed.Rmd`
+11. `v09-bayesian-multilevel.Rmd`
+12. `v11-nonlinear-random-regression.Rmd`
+
+**Block 4 - Spatial, MET, publication and teaching**
+
+13. `v12-spatial-field-trials.Rmd`
+14. `v13-met-gxe.Rmd`
+15. `v15-publication-output.Rmd`
+16. `v16-teaching-tour.Rmd`
+
+**Block 5 - State of the art, validation and complete workflows**
+
+17. `v17-state-of-the-art.Rmd`
+18. `v18-validation-reproducibility.Rmd`
+19. `v19-complete-agronomic-workflow.Rmd`
+20. `v20-api-example-catalog.Rmd`
+
+This overview explains the architecture before the modules are studied.
+`v19-complete-agronomic-workflow.Rmd` is the capstone case study that integrates
+the methods after they have been studied, so the two are complementary.
+

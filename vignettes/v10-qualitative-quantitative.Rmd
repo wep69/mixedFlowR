@@ -1,0 +1,372 @@
+---
+title: "Qualitative and Quantitative Factors in Mixed Models"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{Qualitative and Quantitative Factors in Mixed Models}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, error = FALSE,
+  collapse = TRUE, comment = "#>", fig.align = "center",
+  fig.width = 7, fig.height = 5, dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+Agronomic experiments often combine a qualitative factor, such as cultivar or irrigation regime, with a quantitative factor, such as nitrogen dose, salinity, temperature, or time. Treating both factors identically can obscure the scientific question.
+
+This vignette develops a principled workflow for estimated marginal means, planned contrasts, compact-letter displays, slopes, polynomial or spline curves, and grid-based optima.
+
+# 1. Learning objectives
+
+You will learn to:
+
+- identify when a predictor should remain quantitative;
+- use EMMs for qualitative factors;
+- construct planned and multiplicity-adjusted contrasts;
+- interpret compact-letter displays cautiously;
+- estimate marginal trends with `mixed_trend()`;
+- create prediction curves with `mixed_curve()`;
+- use polynomial or spline bases with `mixed_quantitative()`;
+- locate a model-based optimum within a declared range;
+- avoid extrapolation beyond experimental support.
+
+# 2. Split-plot example
+
+```{r data}
+library(mixedFlowR)
+d <- mixed_data("splitplot")
+head(d)
+```
+
+Variety is qualitative. Nitrogen is quantitative.
+
+```{r raw-summary}
+aggregate(yield ~ variety + nitrogen, d, mean)
+```
+
+# 3. A conceptual decision table
+
+| Predictor | Natural question | Preferred output |
+|---|---|---|
+| variety | Which levels differ? | EMMs and contrasts |
+| nitrogen dose | How does response change with dose? | slopes, curves, optimum |
+| time | What is the trajectory? | trend/curve and dependence model |
+| treatment × dose | Do dose responses differ by treatment? | interaction-specific curves/trends |
+
+# 4. Model for qualitative-by-quantitative interaction
+
+Fit a quadratic nitrogen response with variety-specific shape.
+
+```{r polynomial-fit}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  fit_poly <- mixed_quantitative(
+    data         = d,
+    response     = "yield",
+    quantitative = "nitrogen",
+    qualitative  = "variety",
+    group        = "block",
+    degree       = 2,
+    basis        = "polynomial"
+  )
+}
+```
+
+The polynomial representation is a mean model. It does not eliminate the need to diagnose the mixed model or represent whole-plot randomization correctly in a study where that hierarchy matters.
+
+# 5. Estimated marginal means for variety
+
+```{r emmeans}
+if (
+  exists("fit_poly") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  emm <- mixed_emmeans(
+    fit_poly,
+    specs = ~ variety
+  )
+
+  emm
+}
+```
+
+An EMM is model-based. It is not simply the arithmetic mean of the observed data.
+
+# 6. Pairwise and planned contrasts
+
+```{r pairwise}
+if (
+  exists("fit_poly") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  pairs <- mixed_contrasts(
+    fit_poly,
+    specs  = ~ variety,
+    method = "pairwise",
+    adjust = "tukey"
+  )
+
+  pairs
+}
+```
+
+If the scientific question is planned, define contrasts that represent hypotheses of interest rather than performing every possible pairwise comparison.
+
+# 7. Compact-letter display: convenient but limited
+
+```{r cld}
+if (
+  exists("fit_poly") &&
+  requireNamespace("emmeans", quietly = TRUE) &&
+  requireNamespace("multcomp", quietly = TRUE) &&
+  requireNamespace("multcompView", quietly = TRUE)
+) {
+  cld <- mixed_cld(
+    fit_poly,
+    specs  = ~ variety,
+    adjust = "tukey"
+  )
+
+  cld
+}
+```
+
+Shared letters indicate a failure to detect a difference under the chosen comparison procedure. They do **not** prove treatment equality.
+
+# 8. Marginal trends for nitrogen
+
+For a model in which nitrogen appears in a form supported by `emtrends`, estimate local or marginal slopes.
+
+```{r simple-trend-fit}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  fit_linear <- mixed_fit(
+    yield ~ variety * nitrogen +
+      (1 | block) +
+      (1 | block:variety),
+    data = d
+  )
+}
+```
+
+```{r trend}
+if (
+  exists("fit_linear") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  tr <- mixed_trend(
+    fit_linear,
+    specs = ~ variety,
+    var   = "nitrogen"
+  )
+
+  tr
+}
+```
+
+**Interpretation.** A slope is an expected change in yield per unit change in nitrogen on the scale defined by the fitted model. Compare slopes among varieties only when that comparison matches the scientific question.
+
+# 9. Model-based response curves
+
+```{r curve}
+if (
+  exists("fit_poly") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  curve_tab <- mixed_curve(
+    fit_poly,
+    variable = "nitrogen",
+    values   = seq(0, 150, by = 10),
+    by       = "variety"
+  )
+
+  head(curve_tab)
+}
+```
+
+```{r curve-plot}
+if (
+  exists("fit_poly") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  mixed_plot(
+    fit_poly,
+    type      = "curve",
+    x         = "nitrogen",
+    by        = "variety",
+    values    = seq(0, 150, by = 2.5),
+    show_data = TRUE
+  )
+}
+```
+
+**How to read the figure.** Compare the trajectory, uncertainty, curvature, and treatment separation over the experimentally supported range. Avoid interpreting small extrapolated differences beyond that range.
+
+# 10. Grid-based optimum
+
+```{r optimum}
+if (
+  exists("fit_poly") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  opt <- mixed_optimum(
+    fit_poly,
+    variable  = "nitrogen",
+    range     = c(0, 150),
+    by        = "variety",
+    objective = "max",
+    n         = 501
+  )
+
+  opt
+}
+```
+
+The result is the best predicted point on the declared grid. It is not a proof that the true biological response has a unique global maximum.
+
+# 11. Linear basis
+
+If the response is plausibly linear over the experimental range:
+
+```{r linear-basis}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  q_linear <- mixed_quantitative(
+    d,
+    response     = "yield",
+    quantitative = "nitrogen",
+    qualitative  = "variety",
+    group        = "block",
+    degree       = 1,
+    basis        = "linear"
+  )
+}
+```
+
+Do not add curvature automatically. The polynomial order should reflect both scientific expectations and model adequacy.
+
+# 12. Spline basis
+
+A spline is useful when the response is smooth but not well represented by a low-order polynomial.
+
+```{r spline-fit}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  q_spline <- mixed_quantitative(
+    d,
+    response     = "yield",
+    quantitative = "nitrogen",
+    qualitative  = "variety",
+    group        = "block",
+    basis        = "spline",
+    df           = 4
+  )
+}
+```
+
+A spline can be flexible, but it may make extrapolation and simple coefficient interpretation less meaningful. Prefer curve-based interpretation.
+
+# 13. Compare mean structures for a scientific reason
+
+```{r mean-compare}
+if (exists("q_linear") && exists("fit_poly")) {
+  mixed_compare(
+    linear    = q_linear,
+    quadratic = fit_poly,
+    method = "information"
+  )
+}
+```
+
+This comparison is descriptive. The model choice should also consider residual patterns, biological plausibility, and uncertainty around curvature.
+
+# 14. A deliberately bad practice: factorize every dose
+
+```{r dose-factor}
+d$nitrogen_f <- factor(d$nitrogen)
+```
+
+```{r factor-model}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  fit_factor <- mixed_fit(
+    yield ~ variety * nitrogen_f +
+      (1 | block) +
+      (1 | block:variety),
+    data = d
+  )
+}
+```
+
+This model can be legitimate if the doses are conceptually distinct treatments. It is less informative if the main objective is a dose-response curve or optimum.
+
+# 15. Interaction interpretation
+
+For a qualitative-by-quantitative interaction, useful statements include:
+
+- the expected slope differs among varieties;
+- the curvature differs among varieties;
+- treatment separation increases or decreases across the dose range;
+- the predicted optimum differs within the experimental range.
+
+Avoid reporting a single variety main effect averaged over a strong variety-by-dose interaction without explaining that averaging.
+
+# 16. Table output
+
+```{r fixed-table}
+if (exists("fit_poly")) {
+  mixed_table(
+    fit_poly,
+    component = "fixed",
+    format = "markdown",
+    caption = "Fixed-effect coefficients for the quantitative-treatment model"
+  )
+}
+```
+
+A coefficient table is useful for reproducibility, but the main biological result may be better communicated by a curve with uncertainty.
+
+# 17. Practical reporting template
+
+A concise results paragraph should answer:
+
+1. Was the treatment-by-dose interaction important?
+2. What was the direction and shape of response?
+3. Where were treatment differences largest?
+4. What model-based optimum was estimated within the experimental range?
+5. How uncertain was the curve or optimum?
+6. Did diagnostics support the chosen mean structure?
+
+# 18. Exercises
+
+## Exercise 1
+
+Compare a linear and quadratic nitrogen response. Plot both and identify whether the quadratic term creates a scientifically meaningful change.
+
+## Exercise 2
+
+Use `mixed_optimum(..., objective="min")` for a hypothetical response where minimization is desired. Explain why the objective must be defined scientifically.
+
+## Exercise 3
+
+Convert nitrogen to a factor and compare the number of estimated treatment parameters with the polynomial model. Discuss the trade-off between flexibility and smooth quantitative structure.
+
+# 19. Key take-home messages
+
+- Qualitative levels are usually interpreted through EMMs and contrasts.
+- Quantitative treatments are usually more informative as trends or curves.
+- Compact-letter displays are summaries of hypothesis tests, not proof of equality.
+- A predicted optimum must stay within a scientifically defensible range.
+- Show observed data together with the model-based curve and uncertainty whenever possible.
+
+# 20. Next vignette
+
+Continue with `14-diagnostics-comparison.Rmd` for a systematic model-checking and comparison workflow.

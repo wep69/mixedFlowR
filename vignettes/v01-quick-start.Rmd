@@ -1,0 +1,499 @@
+---
+title: "mixedFlowR Quick Start: From Design to Scientific Output"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{mixedFlowR Quick Start: From Design to Scientific Output}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  eval = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  error = FALSE,
+  collapse = TRUE,
+  comment = "#>",
+  fig.align = "center",
+  fig.width = 7,
+  fig.height = 5,
+  dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+This vignette is the recommended first contact with `mixedFlowR`. It follows one agronomic experiment from the experimental design to a model, diagnostics, inference, a quantitative treatment response, publication-oriented output, and a reproducible report skeleton.
+
+The package is **design-aware** rather than engine-centered. The first question is not "Which function fits a mixed model?" but "What was randomized, to which experimental unit, and which observations share the same source of variation?"
+
+## Learning objectives
+
+After completing this vignette, you should be able to:
+
+1. inspect the package capabilities and teaching datasets;
+2. audit an experimental design before modeling;
+3. understand the transition from legacy split-plot ANOVA to an LMM;
+4. fit and diagnose a Gaussian mixed model;
+5. obtain small-sample fixed-effect tests when the required backend is available;
+6. distinguish qualitative treatment comparisons from quantitative trends;
+7. create a table and figure suitable as a starting point for publication;
+8. generate a reproducible Markdown report skeleton;
+9. recognize when a specialized module is required.
+
+# 1. The package workflow
+
+A compact `mixedFlowR` analysis can be remembered as eight questions.
+
+| Question | Typical function |
+|---|---|
+| What is the experimental hierarchy? | `mixed_design_audit()` |
+| Is the design balanced and supported? | `mixed_balance()` |
+| What model represents that hierarchy? | `mixed_fit()` |
+| Did estimation behave properly? | `mixed_diagnose()` |
+| What fixed-effect evidence is available? | `mixed_anova()` |
+| Is the treatment qualitative or quantitative? | `mixed_emmeans()` / `mixed_trend()` |
+| How should results be communicated? | `mixed_table()` / `mixed_plot()` |
+| How is the analysis documented? | `mixed_report()` |
+
+The package delegates estimation to established R engines rather than recreating them. `lme4` is the principal core backend for LMMs and GLMMs [@bates2015]; other modules use engines such as `nlme`, `glmmTMB`, `robustlmm`, `gamlss`, `brms`, `SpATS`, and `sommer` when the scientific problem requires their capabilities.
+
+# 2. Start by checking capabilities
+
+```{r capabilities}
+library(mixedFlowR)
+
+caps <- mixed_capabilities()
+caps
+```
+
+A missing optional package is not automatically an error. It means that the corresponding specialized module is unavailable until that backend is installed.
+
+You can also inspect the 70-block roadmap.
+
+```{r block-map}
+mixed_blocks()
+```
+
+Search by topic:
+
+```{r block-search}
+mixed_blocks("Bootstrap")
+mixed_blocks("Spatial|field")
+mixed_blocks("GAMLSS|Bayesian")
+```
+
+# 3. Teaching data: a split-plot field experiment
+
+The `splitplot` dataset represents a field trial with blocks, variety as the whole-plot factor, nitrogen dose as the subplot treatment, and yield as the response.
+
+```{r data}
+d <- mixed_data("splitplot")
+str(d)
+head(d)
+```
+
+A first descriptive summary is useful, provided that it is not confused with design-correct inference.
+
+```{r descriptive-table}
+aggregate(yield ~ variety + nitrogen, data = d, FUN = mean)
+```
+
+A raw-data plot shows the basic response structure.
+
+```{r raw-figure}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  ggplot2::ggplot(d, ggplot2::aes(nitrogen, yield, group = variety, colour = variety)) +
+    ggplot2::geom_point(alpha = 0.75) +
+    ggplot2::geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = FALSE) +
+    ggplot2::labs(
+      x = "Nitrogen dose",
+      y = "Yield",
+      colour = "Variety",
+      title = "Observed yield across nitrogen doses"
+    ) +
+    ggplot2::theme_minimal(base_size = 11)
+}
+```
+
+**How to read this figure.** Look for the direction and curvature of the dose response, differences among varieties, unusual observations, and regions with sparse information. The figure does not yet account for the split-plot randomization.
+
+# 4. Audit the design before fitting a model
+
+```{r design-audit}
+audit <- mixed_design_audit(
+  data     = d,
+  response = "yield",
+  block    = "block",
+  whole    = "variety",
+  sub      = "nitrogen"
+)
+
+audit
+```
+
+Inspect the declared hierarchy.
+
+```{r hierarchy}
+mixed_hierarchy(
+  d,
+  block = "block",
+  whole = "variety",
+  sub   = "nitrogen"
+)
+```
+
+Inspect treatment support.
+
+```{r balance}
+mixed_balance(d, c("block", "variety", "nitrogen"))
+```
+
+Create an explicit whole-plot identifier and screen for pseudoreplication risk.
+
+```{r pseudorep}
+d$whole_plot <- interaction(d$block, d$variety, drop = TRUE)
+
+mixed_pseudorep(
+  d,
+  response  = "yield",
+  cluster   = "whole_plot",
+  treatment = "variety"
+)
+```
+
+## Interpretation
+
+The whole plot is the experimental unit for `variety`. Individual subplot observations inside the same whole plot are not independent replicates of the variety treatment. Nitrogen is applied at the subplot level, so it has a different error scale.
+
+# 5. Legacy split-plot analysis as a teaching bridge
+
+For a classical balanced analysis, code nitrogen as a factor when the goal is the full split-plot ANOVA decomposition.
+
+```{r legacy-prepare}
+d$nitrogen_f <- factor(d$nitrogen)
+```
+
+```{r legacy-fit}
+legacy <- fit_legacy_splitplot(
+  data     = d,
+  response = "yield",
+  block    = "block",
+  whole    = "variety",
+  sub      = "nitrogen_f"
+)
+
+splitplot_anova(legacy)
+```
+
+Inspect the expected mean-square structure.
+
+```{r ems}
+splitplot_ems(
+  data  = d,
+  block = "block",
+  whole = "variety",
+  sub   = "nitrogen_f"
+)
+```
+
+If `lme4` is available, compare the legacy representation with a mixed-model representation.
+
+```{r legacy-vs-mixed}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  compare_legacy_mixed(
+    data     = d,
+    response = "yield",
+    block    = "block",
+    whole    = "variety",
+    sub      = "nitrogen_f"
+  )
+}
+```
+
+**Interpretation.** The purpose of this comparison is not to declare one paradigm universally superior. In balanced settings, the classical decomposition is a valuable audit and teaching device. The LMM becomes much more useful with imbalance, flexible covariance structures, prediction, random slopes, and extensions to non-Gaussian responses.
+
+# 6. Fit the modern LMM
+
+Because nitrogen has a real quantitative scale, return to the numeric variable for the primary trend-oriented analysis.
+
+```{r lmm-fit}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  fit <- mixed_fit(
+    yield ~ variety * nitrogen +
+      (1 | block) +
+      (1 | block:variety),
+    data = d,
+    engine = "lme4"
+  )
+
+  fit
+}
+```
+
+The random term `(1 | block:variety)` represents variability among whole plots. This is the mixed-model counterpart of the whole-plot error stratum.
+
+# 7. Diagnose before interpreting
+
+```{r lmm-diagnostics}
+if (exists("fit")) {
+  diag <- mixed_diagnose(fit)
+  diag
+}
+```
+
+```{r lmm-residual-plot, fig.height=4.8}
+if (exists("fit")) {
+  mixed_plot(fit, type = "residuals")
+}
+```
+
+A useful first checklist is:
+
+- convergence;
+- singularity;
+- residual pattern;
+- extreme residuals;
+- evidence of heteroscedasticity;
+- unmodeled temporal or spatial dependence, when relevant.
+
+If the diagnostic structure is poor, inference should wait.
+
+# 8. Fixed-effect inference
+
+Satterthwaite tests are available when `lmerTest` is installed.
+
+```{r satterthwaite}
+if (
+  exists("fit") &&
+  requireNamespace("lmerTest", quietly = TRUE)
+) {
+  mixed_anova(fit, ddf = "Satterthwaite")
+}
+```
+
+Kenward-Roger requires both `lmerTest` and `pbkrtest`.
+
+```{r kenward-roger}
+if (
+  exists("fit") &&
+  requireNamespace("lmerTest", quietly = TRUE) &&
+  requireNamespace("pbkrtest", quietly = TRUE)
+) {
+  mixed_anova(fit, ddf = "Kenward-Roger")
+}
+```
+
+**Interpretation.** An interaction between variety and nitrogen changes the meaning of the main effects. If the interaction is important, describe how the nitrogen response changes by variety rather than reporting isolated main-effect conclusions.
+
+# 9. Qualitative and quantitative questions are different
+
+## 9.1 Variety as a qualitative treatment
+
+```{r emmeans}
+if (
+  exists("fit") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  emm_variety <- mixed_emmeans(
+    fit,
+    specs = ~ variety
+  )
+
+  emm_variety
+}
+```
+
+Planned or pairwise contrasts:
+
+```{r contrasts}
+if (
+  exists("fit") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  mixed_contrasts(
+    fit,
+    specs  = ~ variety,
+    method = "pairwise",
+    adjust = "tukey"
+  )
+}
+```
+
+## 9.2 Nitrogen as a quantitative treatment
+
+```{r trend}
+if (
+  exists("fit") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  mixed_trend(
+    fit,
+    specs = ~ variety,
+    var   = "nitrogen"
+  )
+}
+```
+
+For a curved response, fit a polynomial model explicitly.
+
+```{r quantitative-fit}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  qfit <- mixed_quantitative(
+    data         = d,
+    response     = "yield",
+    quantitative = "nitrogen",
+    qualitative  = "variety",
+    group        = "block",
+    degree       = 2,
+    basis        = "polynomial"
+  )
+}
+```
+
+Then obtain a model-based curve.
+
+```{r response-curve, fig.height=4.8}
+if (
+  exists("qfit") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  mixed_plot(
+    qfit,
+    type      = "curve",
+    x         = "nitrogen",
+    by        = "variety",
+    values    = seq(min(d$nitrogen), max(d$nitrogen), length.out = 61),
+    show_data = TRUE
+  )
+}
+```
+
+**How to read the curve.** The line represents the fitted mean response conditional on the fixed-effect structure, the ribbon represents model uncertainty when supported by the method, and points represent the observations. Focus on biologically meaningful shape and uncertainty, not only the significance of polynomial coefficients.
+
+# 10. Create reusable tables
+
+```{r fixed-table}
+if (exists("fit")) {
+  mixed_table(
+    fit,
+    component = "fixed",
+    format    = "markdown",
+    digits    = 3,
+    caption   = "Fixed-effect estimates for the split-plot LMM"
+  )
+}
+```
+
+```{r random-table}
+if (exists("fit")) {
+  mixed_table(
+    fit,
+    component = "random",
+    format    = "markdown",
+    digits    = 3,
+    caption   = "Random-effect variance components"
+  )
+}
+```
+
+# 11. Generate a report skeleton
+
+```{r report, eval=FALSE}
+# This writes a new Markdown file in the working directory.
+mixed_report(
+  fit,
+  file  = "quick_start_analysis.md",
+  title = "mixedFlowR quick-start analysis"
+)
+```
+
+This chunk is intentionally not evaluated during vignette building because a package vignette should not create arbitrary files in the build directory.
+
+# 12. When to move to a specialized module
+
+| Data or design feature | Next function or vignette |
+|---|---|
+| repeated residual correlation | `mixed_ar1()`, `mixed_car1()` |
+| heterogeneous residual variance | `mixed_heterogeneity()` |
+| counts / disease incidence | `mixed_count()`, `mixed_binomial()` |
+| zero inflation | `mixed_zero_inflated()` |
+| influential observations | `mixed_robust()`, `mixed_compare_robust()` |
+| asymmetric or difficult uncertainty | `mixed_boot()` |
+| distributional scale/shape | `mixed_gamlss()` |
+| full posterior inference | `mixed_bayes()` |
+| nonlinear biological curves | `mixed_growth()`, `mixed_dose_response()` |
+| row-column field trend | `mixed_spatial_field()` |
+| genotype by environment | `mixed_met()`, `mixed_gxe()` |
+
+# 13. Three quick practice exercises
+
+## Exercise 1: incomplete support
+
+Delete one observation and rerun `mixed_balance()`. Which cell becomes incomplete?
+
+```{r exercise-1}
+d_missing <- d[-1, ]
+mixed_balance(d_missing, c("block", "variety", "nitrogen"))
+```
+
+## Exercise 2: categorical nitrogen
+
+Fit the modern LMM with `nitrogen_f` instead of numeric nitrogen. Compare the scientific question with the trend-based analysis.
+
+```{r exercise-2}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  fit_factor <- mixed_fit(
+    yield ~ variety * nitrogen_f +
+      (1 | block) +
+      (1 | block:variety),
+    data = d
+  )
+
+  mixed_diagnose(fit_factor)
+}
+```
+
+## Exercise 3: simpler random structure
+
+Fit a model without `(1 | block:variety)` and explain why a smaller AIC, if it occurred, would not by itself justify ignoring the whole-plot randomization.
+
+```{r exercise-3}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  fit_wrong_scale <- mixed_fit(
+    yield ~ variety * nitrogen + (1 | block),
+    data = d
+  )
+}
+```
+
+# 14. Key take-home messages
+
+1. Encode the experimental design before selecting an engine.
+2. The random structure should represent real experimental or sampling levels.
+3. Diagnostics precede inference.
+4. Qualitative and quantitative treatments require different estimands.
+5. Report estimates with uncertainty and observed data whenever possible.
+6. Specialized backends should be added because the scientific problem requires them, not because they are available.
+
+# 15. What to read next
+
+Continue with:
+
+1. `02-design-legacy-splitplot.Rmd` for error strata and classical designs;
+2. `03-random-effects-and-shrinkage.Rmd` for random effects and partial pooling;
+3. `04-glmm-distributions.Rmd` for non-Gaussian outcomes.
+
+# References
+
+The core mixed-model implementation and the package philosophy build on established mixed-model software and methods, including `lme4` [@bates2015] and `glmmTMB` [@brooks2017]. Specialized modules are documented in the corresponding focused vignettes.

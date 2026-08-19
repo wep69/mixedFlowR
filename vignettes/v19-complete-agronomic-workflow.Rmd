@@ -1,0 +1,730 @@
+---
+title: "Complete Agronomic Workflow: Split-Plot Nitrogen Response"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{Complete Agronomic Workflow: Split-Plot Nitrogen Response}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, error = FALSE,
+  collapse = TRUE, comment = "#>", fig.align = "center",
+  fig.width = 7, fig.height = 5, dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+This capstone vignette integrates the major concepts of the tutorial series in one coherent agronomic analysis. The example is a randomized complete-block split-plot trial with variety in whole plots, nitrogen dose in subplots, and yield as the response.
+
+The purpose is not to use every advanced model. The purpose is to show **when** each extension becomes relevant and when the simpler analysis should be retained.
+
+# 1. Learning objectives
+
+You will learn to execute a complete workflow:
+
+1. define the scientific question;
+2. audit the randomization and experimental units;
+3. explore raw data;
+4. use legacy ANOVA as a design check;
+5. fit the design-correct LMM;
+6. diagnose the fit;
+7. interpret qualitative and quantitative effects;
+8. evaluate uncertainty;
+9. conduct robust and bootstrap sensitivity analyses;
+10. produce publication-ready figures and tables;
+11. generate a reproducibility record;
+12. decide whether advanced GAMLSS/Bayesian/spatial extensions are justified.
+
+# 2. Scientific question
+
+Assume the study asks:
+
+> Do varieties differ in grain yield, how does yield respond to nitrogen dose, and does the nitrogen response depend on variety when the split-plot randomization is represented correctly?
+
+Secondary questions are:
+
+- Are conclusions sensitive to influential observations?
+- Are uncertainty intervals stable under bootstrap resampling?
+- Is there evidence that a more complex distributional or covariance model is needed?
+
+# 3. Load data and record capabilities
+
+```{r data}
+library(mixedFlowR)
+d <- mixed_data("splitplot")
+head(d)
+```
+
+```{r capabilities}
+mixed_capabilities()
+```
+
+# 4. Define the estimands before fitting
+
+**Variety:** qualitative whole-plot treatment.  
+**Nitrogen:** quantitative subplot treatment.  
+**Variety × nitrogen:** modification of dose response by variety.  
+**Block and block-by-variety:** randomization-induced grouping components.
+
+This declaration prevents the analysis from drifting into arbitrary pairwise tests or automatic model selection.
+
+# 5. Audit the design
+
+```{r audit}
+audit <- mixed_design_audit(
+  d,
+  response = "yield",
+  block = "block",
+  whole = "variety",
+  sub = "nitrogen"
+)
+audit
+```
+
+```{r hierarchy}
+mixed_hierarchy(d, block = "block", whole = "variety", sub = "nitrogen")
+```
+
+```{r balance}
+mixed_balance(d, c("block", "variety", "nitrogen"))
+```
+
+# 6. Explicitly identify whole plots
+
+```{r whole-plots}
+d$whole_plot <- interaction(d$block, d$variety, drop = TRUE)
+
+mixed_pseudorep(
+  d,
+  response = "yield",
+  cluster = "whole_plot",
+  treatment = "variety"
+)
+```
+
+The variety treatment is replicated at the whole-plot level, not at the subplot-observation level.
+
+# 7. Raw-data exploration
+
+```{r raw-plot, fig.height=5.2}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  ggplot2::ggplot(
+    d,
+    ggplot2::aes(nitrogen, yield, colour = variety)
+  ) +
+    ggplot2::geom_point(alpha = 0.7) +
+    ggplot2::geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = FALSE) +
+    ggplot2::facet_wrap(~ block) +
+    ggplot2::labs(
+      x = "Nitrogen dose",
+      y = "Yield",
+      colour = "Variety",
+      title = "Observed split-plot response by block"
+    ) +
+    ggplot2::theme_minimal(base_size = 11)
+}
+```
+
+Questions to ask before modeling:
+
+- Is response plausibly smooth with dose?
+- Does one block behave differently?
+- Are there isolated extreme observations?
+- Does variance change with dose?
+- Are the tested doses dense enough to support curvature?
+
+# 8. Descriptive table
+
+```{r descriptive}
+raw_means <- aggregate(yield ~ variety + nitrogen, d, mean)
+raw_means
+```
+
+These means are not the final inferential result because they ignore the split-plot hierarchy.
+
+# 9. Legacy split-plot design check
+
+Code dose categorically for the classical decomposition.
+
+```{r legacy-data}
+d$nitrogen_f <- factor(d$nitrogen)
+```
+
+```{r legacy-fit}
+legacy <- fit_legacy_splitplot(
+  d,
+  response = "yield",
+  block = "block",
+  whole = "variety",
+  sub = "nitrogen_f"
+)
+```
+
+```{r legacy-table}
+splitplot_anova(legacy)
+```
+
+```{r legacy-ems}
+splitplot_ems(d, "block", "variety", "nitrogen_f")
+```
+
+The legacy result is used here to verify error strata and design logic.
+
+# 10. Legacy-to-mixed benchmark
+
+```{r legacy-mixed}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  compare_legacy_mixed(
+    d, "yield", "block", "variety", "nitrogen_f"
+  )
+}
+```
+
+# 11. Primary LMM: linear nitrogen trend
+
+Start with the simplest scientifically plausible quantitative response.
+
+```{r linear-fit}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  fit_linear <- mixed_fit(
+    yield ~ variety * nitrogen +
+      (1 | block) +
+      (1 | block:variety),
+    data = d
+  )
+}
+```
+
+# 12. Diagnose the primary model
+
+```{r linear-diagnose}
+if (exists("fit_linear")) {
+  diag_linear <- mixed_diagnose(fit_linear)
+  diag_linear
+  mixed_plot(fit_linear, type = "residuals")
+}
+```
+
+If strong curvature remains, the scientific mean model is incomplete.
+
+# 13. Quadratic nitrogen response
+
+```{r quadratic-fit}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  fit_quad <- mixed_fit(
+    yield ~ variety * poly(nitrogen, 2) +
+      (1 | block) +
+      (1 | block:variety),
+    data = d
+  )
+}
+```
+
+```{r quadratic-diagnose}
+if (exists("fit_quad")) {
+  diag_quad <- mixed_diagnose(fit_quad)
+  diag_quad
+  mixed_plot(fit_quad, type = "residuals")
+}
+```
+
+# 14. Compare mean structures carefully
+
+Because the fixed-effect structures differ, likelihood comparison should use ML if an LRT is desired. For a descriptive comparison, use information criteria while still reviewing residual shape.
+
+```{r ml-fits}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  linear_ml <- mixed_fit(
+    yield ~ variety * nitrogen +
+      (1 | block) + (1 | block:variety),
+    data = d,
+    REML = FALSE
+  )
+
+  quad_ml <- mixed_fit(
+    yield ~ variety * poly(nitrogen, 2) +
+      (1 | block) + (1 | block:variety),
+    data = d,
+    REML = FALSE
+  )
+}
+```
+
+```{r mean-comparison}
+if (exists("linear_ml") && exists("quad_ml")) {
+  mixed_compare(
+    linear = linear_ml,
+    quadratic = quad_ml,
+    method = "information"
+  )
+}
+```
+
+# 15. Primary fixed-effect inference
+
+If the quadratic model is retained for scientific and diagnostic reasons, use a small-sample method when appropriate.
+
+```{r kr-anova}
+if (
+  exists("fit_quad") &&
+  requireNamespace("lmerTest", quietly = TRUE) &&
+  requireNamespace("pbkrtest", quietly = TRUE)
+) {
+  mixed_anova(
+    fit_quad,
+    ddf = "Kenward-Roger"
+  )
+}
+```
+
+# 16. Variety estimated marginal means
+
+```{r variety-emm}
+if (
+  exists("fit_quad") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  variety_emm <- mixed_emmeans(
+    fit_quad,
+    specs = ~ variety
+  )
+  variety_emm
+}
+```
+
+When a strong interaction is present, averaged variety EMMs require cautious interpretation.
+
+# 17. Planned variety contrasts
+
+```{r variety-contrasts}
+if (
+  exists("fit_quad") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  mixed_contrasts(
+    fit_quad,
+    specs = ~ variety,
+    method = "pairwise",
+    adjust = "tukey"
+  )
+}
+```
+
+# 18. Quantitative nitrogen model helper
+
+Fit the dedicated quadratic quantitative model.
+
+```{r quantitative-helper}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  qfit <- mixed_quantitative(
+    d,
+    response = "yield",
+    quantitative = "nitrogen",
+    qualitative = "variety",
+    group = "block",
+    degree = 2,
+    basis = "polynomial"
+  )
+}
+```
+
+This helper is convenient for trend/curve teaching. For the final split-plot analysis, always verify that the random structure fully represents the randomization required by the study.
+
+# 19. Nitrogen trends
+
+For the linear primary model, marginal slopes are straightforward.
+
+```{r slopes}
+if (
+  exists("fit_linear") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  slopes <- mixed_trend(
+    fit_linear,
+    specs = ~ variety,
+    var = "nitrogen"
+  )
+  slopes
+}
+```
+
+# 20. Response curves
+
+```{r curve-data}
+if (
+  exists("fit_quad") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  curve_data <- mixed_curve(
+    fit_quad,
+    variable = "nitrogen",
+    values = seq(0, 150, by = 5),
+    by = "variety"
+  )
+
+  head(curve_data)
+}
+```
+
+```{r curve-plot, fig.height=5.2}
+if (
+  exists("fit_quad") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  mixed_plot(
+    fit_quad,
+    type = "curve",
+    x = "nitrogen",
+    by = "variety",
+    values = seq(0, 150, by = 2.5),
+    show_data = TRUE
+  )
+}
+```
+
+**Primary biological interpretation:** describe the dose-response shape, treatment separation over the dose range, and uncertainty. Do not reduce the result to the significance of one polynomial coefficient.
+
+# 21. Model-based optimum
+
+```{r optimum}
+if (
+  exists("fit_quad") &&
+  requireNamespace("emmeans", quietly = TRUE)
+) {
+  opt <- mixed_optimum(
+    fit_quad,
+    variable = "nitrogen",
+    range = c(0, 150),
+    by = "variety",
+    objective = "max",
+    n = 501
+  )
+
+  opt
+}
+```
+
+The optimum is conditional on the fitted curve and the declared search range. It is not automatically an economic optimum.
+
+# 22. Robust sensitivity analysis
+
+Create the robust counterpart only if the Gaussian LMM is the relevant primary model and `robustlmm` is available.
+
+```{r robust}
+if (
+  exists("fit_linear") &&
+  requireNamespace("robustlmm", quietly = TRUE)
+) {
+  robust_fit <- mixed_robust(
+    yield ~ variety * nitrogen +
+      (1 | block) +
+      (1 | block:variety),
+    data = d
+  )
+
+  mixed_compare_robust(
+    fit_linear,
+    robust_fit
+  )
+}
+```
+
+A material shift should lead to observation/cluster review, not automatic exclusion.
+
+# 23. Contamination screen
+
+```{r contamination}
+if (exists("fit_linear")) {
+  mixed_contamination(
+    fit_linear,
+    cluster = "whole_plot",
+    threshold = 2.5
+  )
+}
+```
+
+# 24. Bootstrap fixed-effect uncertainty
+
+Use a light vignette-scale bootstrap.
+
+```{r boot-demo}
+if (exists("fit_linear")) {
+  boot_demo <- mixed_boot_fixed(
+    fit_linear,
+    B = 49,
+    seed = 260818
+  )
+}
+```
+
+Production analysis:
+
+```{r boot-production, eval=FALSE}
+boot_full <- mixed_boot_fixed(
+  fit_linear,
+  B = 4999,
+  seed = 260818
+)
+```
+
+# 25. Bootstrap variance components
+
+```{r boot-var-demo}
+if (exists("fit_linear")) {
+  boot_var_demo <- mixed_boot_variance(
+    fit_linear,
+    B = 49,
+    seed = 260818
+  )
+}
+```
+
+Variance-component uncertainty can be asymmetric and is often scientifically important in hierarchical experiments.
+
+# 26. Is GAMLSS needed?
+
+Do **not** fit GAMLSS automatically. First ask whether residual scale or shape remains systematically related to treatment or dose after the core mean and covariance structure is adequate.
+
+A sensitivity template:
+
+```{r gamlss-sensitivity}
+if (requireNamespace("gamlss", quietly = TRUE)) {
+  g_loc <- mixed_gamlss(
+    yield ~ variety * nitrogen,
+    d,
+    family = "NO",
+    random = "block"
+  )
+
+  g_scale <- mixed_gamlss(
+    yield ~ variety * nitrogen,
+    d,
+    family = "NO",
+    sigma.formula = ~ variety,
+    random = "block"
+  )
+
+  mixed_gamlss_select(
+    constant_scale = g_loc,
+    variety_scale = g_scale
+  )
+}
+```
+
+This is a distributional sensitivity model, not a replacement for the split-plot randomization analysis unless the full hierarchy is represented appropriately.
+
+# 27. Is a Bayesian model needed?
+
+A Bayesian counterpart is justified when priors, posterior prediction, direct probability statements, or complex hierarchical uncertainty are central to the scientific aim.
+
+```{r bayes-template, eval=FALSE}
+priors <- c(
+  brms::prior(normal(0, 20), class = "Intercept"),
+  brms::prior(normal(0, 5), class = "b"),
+  brms::prior(exponential(1), class = "sd"),
+  brms::prior(exponential(1), class = "sigma")
+)
+
+bayes_fit <- mixed_bayes(
+  yield ~ variety * nitrogen +
+    (1 | block) +
+    (1 | block:variety),
+  data = d,
+  prior = priors,
+  chains = 4,
+  iter = 4000,
+  seed = 260818
+)
+
+mixed_pp_check(bayes_fit)
+```
+
+The priors are placeholders for scale-aware refinement, not universal recommendations.
+
+# 28. Fixed-effect table
+
+```{r fixed-table}
+if (exists("fit_linear")) {
+  mixed_table(
+    fit_linear,
+    component = "fixed",
+    format = "markdown",
+    digits = 3,
+    caption = "Fixed-effect estimates for the design-correct LMM"
+  )
+}
+```
+
+# 29. Random-effect table
+
+```{r random-table}
+if (exists("fit_linear")) {
+  mixed_table(
+    fit_linear,
+    component = "random",
+    format = "markdown",
+    digits = 3,
+    caption = "Random-effect variance components"
+  )
+}
+```
+
+# 30. Diagnostic table
+
+```{r diagnostics-table}
+if (exists("diag_linear")) {
+  mixed_table(
+    diag_linear,
+    component = "diagnostics",
+    format = "markdown",
+    caption = "Diagnostic status"
+  )
+}
+```
+
+# 31. Publication figure set
+
+A compact manuscript set can include:
+
+**Figure A:** observed yield by nitrogen and variety.  
+**Figure B:** model-based variety-specific response curves with uncertainty.  
+**Figure C:** residual diagnostics.  
+**Supplement:** random-effect or bootstrap uncertainty figure.
+
+# 32. Export example
+
+```{r export, eval=FALSE}
+mixed_plot(
+  fit_quad,
+  type = "curve",
+  x = "nitrogen",
+  by = "variety",
+  values = seq(0, 150, by = 2.5),
+  show_data = TRUE,
+  file = "yield_nitrogen_curve.tiff",
+  width = 7,
+  height = 5,
+  dpi = 600
+)
+```
+
+# 33. Reproducible report
+
+```{r report}
+if (exists("fit_linear")) {
+  report_file <- tempfile(fileext = ".md")
+  mixed_report(
+    fit_linear,
+    report_file,
+    title = "Split-plot variety × nitrogen analysis"
+  )
+
+  readLines(report_file, n = 12)
+}
+```
+
+# 34. Interpretation framework
+
+A final narrative should follow this sequence.
+
+## Design
+
+State that variety was randomized to whole plots and nitrogen to subplots within blocks.
+
+## Model
+
+State the fixed variety-by-nitrogen mean structure and random block/whole-plot components.
+
+## Diagnostics
+
+Report convergence, singularity, and residual adequacy.
+
+## Inferential result
+
+Describe treatment-specific nitrogen response, uncertainty, and any important interaction.
+
+## Sensitivity
+
+State whether robust or bootstrap analyses changed the substantive conclusion.
+
+## Limits
+
+Do not extrapolate beyond tested nitrogen range or interpret a grid optimum as an economic recommendation without cost/price modeling.
+
+# 35. Decision points for escalation
+
+Escalate only if needed.
+
+| Diagnostic/scientific problem | Extension |
+|---|---|
+| residual heteroscedasticity | `mixed_heterogeneity()` or distributional scale model |
+| serial repeated measurements | `mixed_ar1()` / `mixed_car1()` |
+| count response | `mixed_count()` |
+| contamination sensitivity | `mixed_robust()` |
+| difficult interval uncertainty | `mixed_boot()` |
+| changing scale/shape | `mixed_gamlss()` |
+| posterior probability/prior question | `mixed_bayes()` |
+| nonlinear mechanistic response | `mixed_growth()` / `mixed_dose_response()` |
+| field spatial trend | `mixed_spatial_field()` |
+| multi-environment adaptation | `mixed_gxe()` |
+
+# 36. What a complete analysis should not look like
+
+Avoid:
+
+1. fitting every available engine;
+2. ranking all models by AIC;
+3. reporting only the smallest p-value;
+4. hiding convergence warnings;
+5. deleting influential data without provenance review;
+6. presenting EMM letters for quantitative dose as the main result;
+7. showing only bars and standard errors;
+8. interpreting a Bayesian credible interval as a frequentist CI;
+9. treating spatial smoothing as a correction that is always beneficial.
+
+# 37. Reproducibility footer
+
+```{r reproducibility}
+utils::sessionInfo()
+```
+
+For a manuscript archive, also store:
+
+- source data checksum;
+- analysis script;
+- seed;
+- package versions;
+- exported figures/tables;
+- model objects when storage permits;
+- validation logs.
+
+# 38. Capstone exercises
+
+1. Repeat the workflow with nitrogen categorical and compare the scientific conclusions.
+2. Create one missing subplot and explain how the mixed and classical routes differ.
+3. Introduce a plausible influential observation and perform robust sensitivity analysis.
+4. Bootstrap the variety-by-nitrogen slope and compare with the model-based SE.
+5. Write a 250-word results section using the design-model-diagnostic-inference-sensitivity sequence.
+
+# 39. Key take-home messages
+
+- A complete mixed-model analysis begins with randomization, not software.
+- Mean structure, covariance, distribution, and robustness are separate modeling questions.
+- Quantitative treatments should preserve their scientific scale when possible.
+- Advanced modules are escalation paths, not mandatory steps.
+- Observed data, uncertainty, diagnostics, and reproducibility should remain visible in the final report.
+
+# 40. Final next step
+
+Use `20-api-example-catalog.Rmd` as the function-level reference after understanding the conceptual workflow developed across the tutorial series.

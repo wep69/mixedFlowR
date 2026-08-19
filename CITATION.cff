@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use mixedFlowR in scientific work, please cite it as below."
+type: software
+title: "mixedFlowR: Design-Aware Mixed Models for Agronomic Experiments"
+version: 0.1.0.9000
+abstract: >
+  A design-aware orchestration layer for classical and modern mixed-model analyses in
+  agronomy and related experimental sciences. The package connects legacy split-plot error
+  strata with linear and generalized linear mixed models, residual covariance structures,
+  robust estimation, bootstrap inference, generalized additive models for location scale
+  and shape, Bayesian multilevel models, nonlinear mixed models, spatial field-trial
+  analysis, multi-environment trials, diagnostics, publication-ready figures and tables,
+  and guided teaching workflows.
+authors:
+  - family-names: "Esfrain Pereira"
+    given-names: "Walter"
+    orcid: "https://orcid.org/0000-0003-1085-0191"
+    email: "walterufpb@yahoo.com.br"
+  - family-names: "Pereira Martinez"
+    given-names: "Magali Haidee"
+    orcid: "https://orcid.org/0009-0009-5419-959X"
+license: GPL-3.0-or-later
+keywords:
+  - mixed models
+  - experimental design
+  - agronomy
+  - split-plot
+  - reproducible research
+  - R

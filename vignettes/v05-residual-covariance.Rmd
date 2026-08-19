@@ -1,0 +1,401 @@
+---
+title: "Residual Covariance and Heteroscedasticity"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{Residual Covariance and Heteroscedasticity}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, error = FALSE,
+  collapse = TRUE, comment = "#>", fig.align = "center",
+  fig.width = 7, fig.height = 5, dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+Random effects and residual covariance solve different modeling problems. Random effects represent heterogeneity among groups or experimental units. Residual covariance represents dependence that remains among observations after the fixed and random components have been specified.
+
+This distinction is essential for repeated measures, longitudinal agronomic experiments, sensor series, and spatially structured trials.
+
+# 1. Learning objectives
+
+You will learn to:
+
+- distinguish random-effect covariance from residual covariance;
+- fit discrete AR(1) and continuous-time AR(1) residual structures;
+- fit heterogeneous residual variances;
+- understand Toeplitz and other structured covariance options;
+- compare plausible covariance candidates without automatic selection;
+- visualize estimated covariance/correlation matrices;
+- understand when `nlme`, `lme4`, and `glmmTMB` structures are not inferentially identical;
+- identify design situations where covariance complexity is unsupported.
+
+# 2. Repeated-measures dataset
+
+```{r data}
+library(mixedFlowR)
+z <- mixed_data("longitudinal")
+head(z)
+```
+
+```{r design-summary}
+with(z, table(treatment, time))
+length(unique(z$subject))
+```
+
+Plot trajectories.
+
+```{r trajectories}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  ggplot2::ggplot(z, ggplot2::aes(time, height, group = subject, colour = treatment)) +
+    ggplot2::geom_line(alpha = 0.28) +
+    ggplot2::geom_point(alpha = 0.45, size = 1) +
+    ggplot2::stat_summary(
+      ggplot2::aes(group = treatment),
+      fun = mean,
+      geom = "line",
+      linewidth = 1.1
+    ) +
+    ggplot2::labs(x = "Time", y = "Height", colour = "Treatment") +
+    ggplot2::theme_minimal(base_size = 11)
+}
+```
+
+# 3. Two sources of dependence
+
+A subject-specific random intercept induces correlation because observations from the same subject share the same latent deviation.
+
+```{r random-intercept}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  ri <- mixed_random_intercepts(
+    z,
+    response = "height",
+    fixed    = "treatment * time",
+    group    = "subject"
+  )
+}
+```
+
+But repeated residuals may still be serially correlated after the random intercept is included. That residual pattern is a separate model component.
+
+# 4. Covariance specification objects
+
+`mixed_covariance()` records a covariance intent before a model is fitted.
+
+```{r covariance-specs}
+ar1_spec <- mixed_covariance("ar1", time = "time", group = "subject")
+car1_spec <- mixed_covariance("car1", time = "time", group = "subject")
+toep_spec <- mixed_covariance("toep", time = "time", group = "subject")
+
+ar1_spec
+car1_spec
+toep_spec
+```
+
+Spatial structures require two coordinates.
+
+```{r spatial-spec}
+mixed_covariance(
+  type    = "mat",
+  group   = "field",
+  spatial = c("row", "col")
+)
+```
+
+# 5. Residual AR(1) with nlme
+
+For equally spaced time points, AR(1) is a common first-order residual model.
+
+```{r ar1}
+if (requireNamespace("nlme", quietly = TRUE)) {
+  m_ar1 <- mixed_ar1(
+    data     = z,
+    response = "height",
+    fixed    = "treatment * time",
+    time     = "time",
+    group    = "subject",
+    engine   = "nlme"
+  )
+
+  m_ar1
+}
+```
+
+With `nlme`, this function fits a **residual** correlation structure.
+
+# 6. Continuous-time AR(1)
+
+If visits are irregularly spaced, a discrete lag count can be scientifically misleading. Create an irregular teaching subset by removing one visit.
+
+```{r irregular-data}
+z_irregular <- z[!(z$subject == "S01" & z$time == 2), ]
+```
+
+```{r car1}
+if (requireNamespace("nlme", quietly = TRUE)) {
+  m_car1 <- mixed_car1(
+    data     = z_irregular,
+    response = "height",
+    fixed    = "treatment * time",
+    time     = "time",
+    group    = "subject"
+  )
+
+  m_car1
+}
+```
+
+**Interpretation.** Continuous-time correlation decays according to actual temporal distance. It is more natural when observations occur at irregular intervals.
+
+# 7. Heterogeneous residual variances
+
+Treatment groups can differ in residual variability even when their mean trajectories are modeled correctly.
+
+```{r heterogeneity}
+if (requireNamespace("nlme", quietly = TRUE)) {
+  m_het <- mixed_heterogeneity(
+    height ~ treatment * time,
+    data           = z,
+    random         = ~ 1 | subject,
+    variance_group = "treatment"
+  )
+
+  m_het
+}
+```
+
+Heterogeneity plus AR(1):
+
+```{r heterogeneity-ar1}
+if (requireNamespace("nlme", quietly = TRUE)) {
+  m_het_ar1 <- mixed_heterogeneity(
+    height ~ treatment * time,
+    data           = z,
+    random         = ~ 1 | subject,
+    variance_group = "treatment",
+    correlation    = nlme::corAR1(form = ~ time | subject)
+  )
+}
+```
+
+This model answers two distinct questions: whether residual scale differs among treatments, and whether nearby visits remain correlated.
+
+# 8. Toeplitz covariance with glmmTMB
+
+Toeplitz covariance allows correlations to vary by lag without imposing one exponential decay parameter.
+
+```{r toeplitz}
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  m_toep <- mixed_toeplitz(
+    data     = z,
+    response = "height",
+    fixed    = "treatment * time",
+    time     = "time",
+    group    = "subject"
+  )
+
+  m_toep
+}
+```
+
+A Toeplitz model can be far more parameter-rich than AR(1). It should not be used merely because it is flexible.
+
+# 9. A critical engine distinction
+
+`mixed_ar1()` can also request a structured component from `lme4` or `glmmTMB`.
+
+```{r ar1-structured-lme4}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  m_ar1_lme4 <- mixed_ar1(
+    z, "height", "treatment * time", "time", "subject",
+    engine = "lme4"
+  )
+}
+```
+
+```{r ar1-structured-tmb}
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  m_ar1_tmb <- mixed_ar1(
+    z, "height", "treatment * time", "time", "subject",
+    engine = "glmmTMB"
+  )
+}
+```
+
+These structured random components should **not** be described as identical to `nlme` residual AR(1). Always report the level at which covariance is modeled.
+
+# 10. Compare covariance candidates
+
+```{r covariance-compare}
+if (exists("m_ar1") && exists("m_het_ar1")) {
+  mixed_covariance_compare(
+    AR1 = m_ar1,
+    Heterogeneous_AR1 = m_het_ar1
+  )
+}
+```
+
+If `m_toep` is available, it can be included as another candidate, but information criteria across engines should be interpreted carefully and only when likelihoods and fixed-effect specifications are comparable.
+
+# 11. Plot an estimated random covariance matrix
+
+Random-effect covariance can be visualized directly for models that estimate it.
+
+```{r random-slope-covariance}
+if (requireNamespace("lme4", quietly = TRUE)) {
+  rs <- mixed_random_slopes(
+    z,
+    response   = "height",
+    fixed      = "treatment * time",
+    slope      = "time",
+    group      = "subject",
+    correlated = TRUE
+  )
+
+  mixed_covariance_plot(
+    rs,
+    group = "subject",
+    correlation = TRUE
+  )
+}
+```
+
+This matrix is a **random-effect** covariance visualization, not a residual AR(1) matrix. Keep the distinction explicit in figure captions.
+
+# 12. Construct a prediction grid for time
+
+```{r temporal-grid}
+grid_time <- mixed_temporal_grid(
+  z,
+  time = "time",
+  by   = "treatment",
+  n    = 60
+)
+head(grid_time)
+```
+
+This is useful for harmonizing model-based curves across treatment groups.
+
+# 13. Spatiotemporal structured component
+
+The `mixed_spatiotemporal()` wrapper supports structured temporal components in `glmmTMB`, including OU for irregular continuous time and AR(1) for ordered visits.
+
+```{r ou}
+if (requireNamespace("glmmTMB", quietly = TRUE)) {
+  m_ou <- mixed_spatiotemporal(
+    data      = z,
+    response  = "height",
+    fixed     = "treatment * time",
+    time      = "time",
+    group     = "subject",
+    structure = "ou"
+  )
+}
+```
+
+Use this only when the structured random component matches the intended dependence model.
+
+# 14. Diagnose covariance models
+
+```{r diagnose-ar1}
+if (exists("m_ar1")) {
+  mixed_diagnose(m_ar1)
+}
+```
+
+```{r diagnose-toeplitz}
+if (exists("m_toep")) {
+  mixed_diagnose(m_toep)
+}
+```
+
+Questions to ask:
+
+- Does the model converge?
+- Is the covariance parameter near a boundary?
+- Does residual structure remain?
+- Is the more complex covariance estimable?
+- Are conclusions about fixed effects stable?
+- Is the covariance structure consistent with measurement timing?
+
+# 15. Practical comparison strategy
+
+A recommended progression is:
+
+1. establish the correct fixed and grouping structure;
+2. fit a scientifically plausible simple covariance model;
+3. inspect residuals and temporal/spatial patterns;
+4. add heterogeneity or covariance complexity only to address a defined problem;
+5. compare candidate models using fit descriptors and diagnostics;
+6. prefer the simpler structure when added flexibility is weakly identified.
+
+# 16. Example: time-specific residual variances
+
+```{r time-specific-variance}
+z$time_f <- factor(z$time)
+
+if (requireNamespace("nlme", quietly = TRUE)) {
+  m_timevar <- mixed_heterogeneity(
+    height ~ treatment * time,
+    data           = z,
+    random         = ~ 1 | subject,
+    variance_group = "time_f"
+  )
+}
+```
+
+This model can become parameter-rich quickly. It is most useful when variance changes systematically by occasion and enough observations support each stratum.
+
+# 17. Common mistakes
+
+## Mistake 1: assuming random intercepts remove all serial correlation
+
+They do not. Random effects and residual dependence are different layers.
+
+## Mistake 2: applying discrete AR(1) to highly irregular times
+
+Consider continuous-time correlation when actual intervals matter.
+
+## Mistake 3: choosing unstructured covariance by default
+
+A flexible structure can be unstable and difficult to estimate with limited repeated observations.
+
+## Mistake 4: comparing AIC values from substantively different mean models
+
+First ensure that the scientific estimand and fixed effects are comparable.
+
+# 18. Reporting checklist
+
+Report:
+
+- measurement schedule;
+- subject or plot grouping;
+- random-effect structure;
+- residual covariance structure and its level;
+- heteroscedastic variance function, if used;
+- engine;
+- covariance parameter estimates when interpretable;
+- diagnostics and model-comparison rationale.
+
+# 19. Exercises
+
+1. Compare AR(1) and CAR(1) after removing several irregular visits.
+2. Compare homogeneous and treatment-specific residual variances.
+3. Fit a Toeplitz model and inspect whether its extra flexibility materially changes inference.
+4. Explain why the `lme4` structured AR term is not described as a residual AR(1) model.
+
+# 20. Next vignette
+
+Continue with `10-qualitative-quantitative.Rmd` to distinguish treatment comparisons from response trends and optima.

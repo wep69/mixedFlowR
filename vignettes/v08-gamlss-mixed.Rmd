@@ -1,0 +1,313 @@
+---
+title: "Mixed GAMLSS: Modeling Location, Scale, and Shape"
+author: "mixedFlowR tutorial series"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{Mixed GAMLSS: Modeling Location, Scale, and Shape}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, error = FALSE,
+  collapse = TRUE, comment = "#>", fig.align = "center",
+  fig.width = 7, fig.height = 5, dpi = 150
+)
+set.seed(260818)
+```
+
+
+# Purpose
+
+A conventional Gaussian mixed model usually focuses on a conditional mean and one residual scale parameter. Generalized Additive Models for Location, Scale and Shape (GAMLSS) extend the model so that multiple parameters of the response distribution can depend on explanatory variables [@rigby2005].
+
+This vignette introduces mixed GAMLSS as a scientific extension for questions in which treatment affects not only the mean response but also its variability or other distributional features.
+
+# 1. Learning objectives
+
+You will learn to:
+
+- distinguish mean modeling from distributional regression;
+- fit a Gaussian GAMLSS with a grouping effect;
+- model residual scale as a function of treatment;
+- inspect fitted `mu`, `sigma`, `nu`, and `tau` where supported;
+- compare GAMLSS candidates using generalized AIC descriptors;
+- obtain fitted quantiles;
+- diagnose a GAMLSS fit;
+- avoid adding distributional complexity without a scientific rationale.
+
+# 2. Data and scientific question
+
+Use the longitudinal plant-height dataset.
+
+```{r data}
+library(mixedFlowR)
+z <- mixed_data("longitudinal")
+head(z)
+```
+
+Observed variability by treatment:
+
+```{r variability}
+aggregate(height ~ treatment, z, function(x) c(mean = mean(x), sd = sd(x)))
+```
+
+A difference in raw standard deviations does not prove a treatment effect on conditional scale because time and subject structure are not accounted for. It motivates a distributional question.
+
+# 3. Baseline GAMLSS mean model
+
+```{r gamlss-baseline}
+if (requireNamespace("gamlss", quietly = TRUE)) {
+  g1 <- mixed_gamlss(
+    height ~ treatment * time,
+    data   = z,
+    family = "NO",
+    random = "subject"
+  )
+
+  g1
+}
+```
+
+Here the location parameter `mu` depends on treatment and time, while `sigma` is constant unless otherwise specified.
+
+# 4. Model scale by treatment
+
+```{r gamlss-scale}
+if (requireNamespace("gamlss", quietly = TRUE)) {
+  g2 <- mixed_gamlss(
+    height ~ treatment * time,
+    data          = z,
+    family        = "NO",
+    sigma.formula = ~ treatment,
+    random        = "subject"
+  )
+
+  g2
+}
+```
+
+This model asks whether residual scale differs by treatment after the mean trajectory and subject grouping have been represented.
+
+# 5. Extract fitted distributional parameters
+
+```{r parameters}
+if (exists("g2")) {
+  pars <- mixed_gamlss_parameters(
+    g2,
+    parameters = c("mu", "sigma")
+  )
+
+  head(pars)
+}
+```
+
+The fitted `mu` and `sigma` values can vary row by row because the parameter predictors depend on covariates.
+
+# 6. Compare baseline and scale models
+
+```{r compare}
+if (exists("g1") && exists("g2")) {
+  mixed_gamlss_select(
+    constant_scale = g1,
+    treatment_scale = g2,
+    k = 2
+  )
+}
+```
+
+This score table does not automatically select the scientifically correct model. Ask whether the scale effect is meaningful, estimable, and consistent with residual behavior.
+
+# 7. BIC-like penalty
+
+```{r bic-like}
+if (exists("g1") && exists("g2")) {
+  mixed_gamlss_select(
+    constant_scale = g1,
+    treatment_scale = g2,
+    k = log(nrow(z))
+  )
+}
+```
+
+Different penalties reflect different complexity trade-offs. They are descriptors, not substitutes for scientific reasoning.
+
+# 8. Fitted quantiles
+
+Quantiles summarize the modeled conditional distribution more richly than the mean alone.
+
+```{r quantiles}
+if (
+  exists("g2") &&
+  requireNamespace("gamlss.dist", quietly = TRUE)
+) {
+  qfit <- mixed_gamlss_quantiles(
+    g2,
+    probs = c(0.10, 0.50, 0.90)
+  )
+
+  head(qfit)
+}
+```
+
+**Interpretation.** A conditional 90th percentile is a model-derived upper-tail response conditional on the covariates. It is not a confidence limit for the mean.
+
+# 9. GAMLSS diagnostics
+
+```{r diagnostics}
+if (exists("g2")) {
+  gd <- mixed_gamlss_diagnose(g2)
+  gd$summary
+  gd$plot
+}
+```
+
+Inspect whether residual distribution assumptions appear plausible and whether the added scale model improves the pattern rather than merely the penalized fit score.
+
+# 10. Random effect through the nlme representation
+
+GAMLSS also supports a random structure through its `re()` interface.
+
+```{r re-random}
+if (
+  requireNamespace("gamlss", quietly = TRUE) &&
+  requireNamespace("nlme", quietly = TRUE)
+) {
+  g_re <- mixed_gamlss(
+    height ~ treatment * time,
+    data      = z,
+    family    = "NO",
+    re_random = ~ 1 | subject
+  )
+}
+```
+
+This route is useful when an `nlme`-style random/correlation structure is required by the GAMLSS specification.
+
+# 11. Add residual correlation to the re() path
+
+```{r gamlss-correlation}
+if (
+  requireNamespace("gamlss", quietly = TRUE) &&
+  requireNamespace("nlme", quietly = TRUE)
+) {
+  g_cor <- mixed_gamlss(
+    height ~ treatment * time,
+    data        = z,
+    family      = "NO",
+    re_random   = ~ 1 | subject,
+    correlation = nlme::corAR1(form = ~ time | subject)
+  )
+}
+```
+
+This model is more complex because it combines distributional regression, grouping, and serial correlation. Add such structure only when the design and diagnostics justify it.
+
+# 12. Why modeling sigma can matter biologically
+
+Examples in agronomy include:
+
+- a biostimulant that increases mean biomass but also produces more heterogeneous plant responses;
+- a stress treatment that leaves the mean similar but increases variability;
+- a cultivar that stabilizes yield under fluctuating conditions;
+- a management practice that changes upper-tail or lower-tail risk.
+
+In these situations, variability can be part of the scientific response rather than nuisance noise.
+
+# 13. Beyond Gaussian location-scale models
+
+GAMLSS supports many distributions, some with additional shape parameters `nu` and `tau`. The correct family should be selected based on the response support, distributional behavior, and scientific process.
+
+Do not add `nu.formula` or `tau.formula` just because the arguments exist.
+
+A generic example is deliberately shown without execution because the family and interpretation must be chosen for a specific response.
+
+```{r shape-example, eval=FALSE}
+g_shape <- mixed_gamlss(
+  y ~ treatment + time,
+  data = dat,
+  family = chosen_four_parameter_family,  # choose a supported family from the scientific question
+  sigma.formula = ~ treatment,
+  nu.formula = ~ treatment,
+  tau.formula = ~ 1,
+  random = "subject"
+)
+```
+
+# 14. Table output
+
+```{r parameter-table}
+if (exists("g2")) {
+  head(mixed_gamlss_parameters(g2, c("mu", "sigma")), 12)
+}
+```
+
+For manuscripts, summarize model coefficients and interpret the scale submodel separately from the mean submodel.
+
+# 15. A decision sequence for GAMLSS
+
+Use GAMLSS when all of the following are plausible:
+
+1. the distributional parameter is scientifically relevant;
+2. diagnostics suggest a conventional location-only model is inadequate;
+3. the sample contains enough information for the extra submodel;
+4. the distribution family matches response support;
+5. parameter-specific effects can be interpreted meaningfully.
+
+# 16. GAMLSS versus robust LMM
+
+These approaches solve different problems.
+
+- robust LMM: reduces sensitivity to contamination under a Gaussian mixed-model framework;
+- GAMLSS: models the conditional distribution more flexibly, including parameter heterogeneity.
+
+A heteroscedastic but valid dataset is not necessarily contaminated. An influential contaminated observation is not necessarily evidence that sigma should depend on treatment.
+
+# 17. GAMLSS versus Bayesian distributional regression
+
+Both can model multiple distributional parameters. The inferential frameworks differ.
+
+GAMLSS here is fit in a likelihood-based framework. `brms` can fit distributional multilevel models with posterior distributions and priors. Choose based on the scientific and inferential needs, not package fashion.
+
+# 18. Exercises
+
+1. Compare constant and treatment-specific `sigma` models.
+2. Fit a simpler mean formula `height ~ time` and inspect whether the scale conclusion changes.
+3. Add an AR(1) correlation through the `re()` pathway and discuss whether the extra structure is estimable.
+4. Explain the difference between a conditional 90th percentile and an upper 90% confidence limit for the mean.
+
+# 19. Reporting checklist
+
+Report:
+
+- GAMLSS family;
+- link functions if non-default;
+- formulas for `mu`, `sigma`, `nu`, and `tau` that are actually modeled;
+- random/grouping structure;
+- correlation structure;
+- diagnostics;
+- candidate-comparison criterion;
+- conditional quantiles if used;
+- scientific interpretation of each distributional parameter.
+
+# 20. Key take-home messages
+
+- GAMLSS models the conditional distribution, not only a mean.
+- Scale and shape effects need scientific interpretation.
+- Quantiles are distributional outputs, not confidence intervals for the mean.
+- Added distributional complexity should solve a diagnosed or scientifically motivated problem.
+- Do not confuse heteroscedasticity with contamination.
+
+# 21. Next vignette
+
+Continue with `09-bayesian-multilevel.Rmd` for prior specification, prior predictive checks, posterior inference, PPC, and LOO.
+
+# References
+
+The distributional regression framework follows the GAMLSS formulation of Rigby and Stasinopoulos [@rigby2005].

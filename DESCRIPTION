@@ -1,0 +1,71 @@
+Package: mixedFlowR
+Type: Package
+Title: Design-Aware Mixed Models for Agronomic Experiments
+Version: 0.1.0.9000
+Authors@R: c(
+    person(given = "Walter", family = "Esfrain Pereira",
+           email = "walterufpb@yahoo.com.br",
+           role = c("aut", "cre", "cph"),
+           comment = c(ORCID = "0000-0003-1085-0191")),
+    person(given = "Magali", family = "Haidee Pereira Martinez",
+           role = "aut",
+           comment = c(ORCID = "0009-0009-5419-959X"))
+    )
+Description: A design-aware orchestration layer for classical and modern mixed-model
+    analyses in agronomy and related experimental sciences. The package connects legacy
+    split-plot error strata with linear and generalized linear mixed models, residual
+    covariance structures, robust estimation, bootstrap inference, generalized additive
+    models for location scale and shape, Bayesian multilevel models, nonlinear mixed
+    models, spatial field-trial analysis, multi-environment trials, diagnostics,
+    publication-ready figures and tables, and guided teaching workflows. Estimation is
+    delegated to established R engines and the design, assumptions, inference and
+    provenance are retained in auditable result objects.
+License: GPL-3
+Encoding: UTF-8
+LazyData: false
+Depends: R (>= 4.2.0)
+Imports:
+    ggplot2,
+    splines,
+    stats,
+    utils,
+    methods
+Suggests:
+    lme4 (>= 2.0-1),
+    reformulas,
+    nlme,
+    glmmTMB,
+    robustlmm,
+    confintROB,
+    clubSandwich,
+    lmerTest,
+    pbkrtest,
+    emmeans,
+    multcomp,
+    multcompView,
+    gamlss,
+    gamlss.dist,
+    brms,
+    posterior,
+    bayesplot,
+    loo,
+    DHARMa,
+    performance,
+    influence.ME,
+    SpATS,
+    sommer,
+    enhancer,
+    boot,
+    MASS,
+    testthat (>= 3.2.0),
+    knitr,
+    rmarkdown,
+    roxygen2 (>= 8.1.0),
+    rcmdcheck,
+    pkgload,
+    flextable,
+    withr
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+Roxygen: list(markdown = TRUE)
+Config/roxygen2/version: 8.1.0
