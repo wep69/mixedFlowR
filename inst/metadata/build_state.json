@@ -4,7 +4,14 @@
   "blocks_implemented": 70,
   "public_functions": 77,
   "static_source_gate": "pass",
-  "runtime_R_validation": "pending",
-  "reason": "awaiting recorded tools/validate_local.R run",
-  "local_validation": "LOCAL_VALIDATION_WINDOWS.md"
+  "runtime_R_validation": "pass",
+  "local_R_version": "4.6.0 (2026-04-24 ucrt)",
+  "validation_date": "2026-08-19",
+  "reason": "R CMD check --as-cran: 0 ERRORs, 0 WARNINGs, 1 NOTE (New submission); testthat 35 tests / 81 asserts / 0 failures; 21 vignettes rendered; bateria 4x1000 concluida; cobertura 53.74%",
+  "local_validation": "LOCAL_VALIDATION_WINDOWS.md",
+  "coverage_pct": 53.74,
+  "check_result": "0 ERR / 0 WARN / 1 NOTE (ambiental)",
+  "win_builder": "enviado (walterufpb@yahoo.com.br); resultado por e-mail",
+  "mac_builder": "pendente (timeout no servico)",
+  "ci_status": "in_progress (4 plataformas)"
 }
